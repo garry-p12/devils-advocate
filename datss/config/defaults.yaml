@@ -1,0 +1,22 @@
+# DATSS default configuration.
+#
+# These values mirror the named thresholds in datss/thresholds.py. The
+# threshold module is the source of truth for policy code; this file is the
+# audit-friendly summary suitable for ops review.
+
+gate:
+  tau_gate_das: 0.92              # DAS >= this => FAIL
+  tau_gate_latency_p99_ms: 2000.0 # end-to-end budget
+
+pool:
+  default_size: 11                # challengers per run
+  min_challengers: 11             # gate fails closed if fewer complete
+  coverage_floor: 0.80            # fraction of BiasClass values required
+
+aggregator:
+  function: trimmed_mean
+  trim_fraction: 0.10             # symmetric per-tail
+
+scoring:
+  clip_min: 0.0
+  clip_max: 1.0

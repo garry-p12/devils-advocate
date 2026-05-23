@@ -1,0 +1,85 @@
+{
+  "weak_signal_gap_threshold": 0.1,
+  "rows": [
+    {
+      "bias_class": "evidence_quality",
+      "mean_pass": 0.08127798644688931,
+      "std_pass": 0.1624221242366841,
+      "mean_fail": 0.9306872992416962,
+      "std_fail": 0.12787969796422785,
+      "mean_borderline": 0.2904078247456305,
+      "gap": 0.8494093127948069,
+      "weak_signal": false
+    },
+    {
+      "bias_class": "methodology",
+      "mean_pass": 0.42047880712630326,
+      "std_pass": 0.3074558318841021,
+      "mean_fail": 0.9619347329400411,
+      "std_fail": 0.06844122875441916,
+      "mean_borderline": 0.7201564378542915,
+      "gap": 0.5414559258137378,
+      "weak_signal": false
+    },
+    {
+      "bias_class": "alternative_hypothesis",
+      "mean_pass": 0.5062185916398393,
+      "std_pass": 0.2634002623702855,
+      "mean_fail": 0.7929011394733413,
+      "std_fail": 0.06644604875518258,
+      "mean_borderline": 0.7555089327616814,
+      "gap": 0.286682547833502,
+      "weak_signal": false
+    },
+    {
+      "bias_class": "scope_generalizability",
+      "mean_pass": 0.5877993248017027,
+      "std_pass": 0.25482389258735,
+      "mean_fail": 0.7622722280301802,
+      "std_fail": 0.16581166128249078,
+      "mean_borderline": 0.8080468346810602,
+      "gap": 0.17447290322847753,
+      "weak_signal": false
+    },
+    {
+      "bias_class": "provenance_coi",
+      "mean_pass": 0.4944638807758313,
+      "std_pass": 0.20234496342870925,
+      "mean_fail": 0.9960341613663694,
+      "std_fail": 0.01777629055978969,
+      "mean_borderline": 0.7543157326276833,
+      "gap": 0.501570280590538,
+      "weak_signal": false
+    },
+    {
+      "bias_class": "internal_consistency",
+      "mean_pass": 0.5675302086063383,
+      "std_pass": 0.0852656624683062,
+      "mean_fail": 0.8725630940405137,
+      "std_fail": 0.1716989624388057,
+      "mean_borderline": 0.6671598382359681,
+      "gap": 0.3050328854341754,
+      "weak_signal": false
+    },
+    {
+      "bias_class": "prior_art_conflict",
+      "mean_pass": 0.5278315744448127,
+      "std_pass": 0.17903030986917226,
+      "mean_fail": 0.800103781988614,
+      "std_fail": 0.11114142224563017,
+      "mean_borderline": 0.6344982411114795,
+      "gap": 0.2722722075438013,
+      "weak_signal": false
+    },
+    {
+      "bias_class": "safety_ethics",
+      "mean_pass": 0.6012667663901283,
+      "std_pass": 0.20879619200915403,
+      "mean_fail": 0.8243184837330665,
+      "std_fail": 0.1496467130227241,
+      "mean_borderline": 0.5567001035589793,
+      "gap": 0.22305171734293816,
+      "weak_signal": false
+    }
+  ]
+}
