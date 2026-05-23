@@ -1,0 +1,109 @@
+{
+  "summary": {
+    "tight_band": [
+      0.75,
+      0.85
+    ],
+    "tau_gate_das": 0.8,
+    "n": 15,
+    "in_band": 5,
+    "below": 10,
+    "above": 0,
+    "mean": 0.644,
+    "median": 0.685,
+    "min": 0.369,
+    "max": 0.819
+  },
+  "rows": [
+    {
+      "id": 21,
+      "das": 0.63,
+      "decision": "PASS",
+      "band": "low"
+    },
+    {
+      "id": 22,
+      "das": 0.785,
+      "decision": "PASS",
+      "band": "tight"
+    },
+    {
+      "id": 23,
+      "das": 0.793,
+      "decision": "PASS",
+      "band": "tight"
+    },
+    {
+      "id": 24,
+      "das": 0.812,
+      "decision": "FAIL",
+      "band": "tight"
+    },
+    {
+      "id": 25,
+      "das": 0.685,
+      "decision": "PASS",
+      "band": "low"
+    },
+    {
+      "id": 71,
+      "das": 0.369,
+      "decision": "PASS",
+      "band": "low"
+    },
+    {
+      "id": 72,
+      "das": 0.519,
+      "decision": "PASS",
+      "band": "low"
+    },
+    {
+      "id": 73,
+      "das": 0.438,
+      "decision": "PASS",
+      "band": "low"
+    },
+    {
+      "id": 74,
+      "das": 0.819,
+      "decision": "FAIL",
+      "band": "tight"
+    },
+    {
+      "id": 75,
+      "das": 0.701,
+      "decision": "PASS",
+      "band": "low"
+    },
+    {
+      "id": 76,
+      "das": 0.701,
+      "decision": "PASS",
+      "band": "low"
+    },
+    {
+      "id": 77,
+      "das": 0.441,
+      "decision": "PASS",
+      "band": "low"
+    },
+    {
+      "id": 78,
+      "das": 0.613,
+      "decision": "PASS",
+      "band": "low"
+    },
+    {
+      "id": 79,
+      "das": 0.779,
+      "decision": "PASS",
+      "band": "tight"
+    },
+    {
+      "id": 80,
+      "das": 0.571,
+      "decision": "PASS",
+      "band": "low"
+    }
+  ]
+}

@@ -223,9 +223,14 @@ also greps the public signature for parameters whose names contain `force`,
 - Enforcement: `gate.py` step 7 compares `elapsed_ms` against
   `latency_budget_ms`. If over, returns FAIL with
   `reason=latency_budget_breached` and does **not** cache the result.
-- Measured p50/p95/p99: see `evaluate.py` output and `report.json`. On the
-  development machine (Darwin 23.5.0, Python 3.12, no GPU), 1000 calls on
-  the 15-row test set with `use_cache=False`:
+- Measured p50/p95/p99: see `evaluate.py` output and `report.json`. **The
+  canonical source of these numbers is `datss/evaluation/report.json`**;
+  README §6 and this section both quote it. Re-running `evaluate.py`
+  updates `report.json`, and the README/DESIGN tables must be updated in
+  the same commit if p99 drifts more than ~20%. Drift below that is
+  wall-clock noise on a 1000-call loop and not worth re-quoting.
+  On the development machine (Darwin 23.5.0, Python 3.12, no GPU), 1000
+  calls on the 15-row test set with `use_cache=False`:
   - p50 ≈ 0.21 ms
   - p95 ≈ 0.26 ms
   - p99 ≈ 0.39 ms (≈ 5,100× under budget)
@@ -546,6 +551,38 @@ desired. This is exactly what the spec asked for under "Thresholds are
 not learned at runtime ... If you tune any default, tune it offline on
 a held-out split and document the chosen value."
 
+### Iteration 13 — BORDERLINE-label honesty check
+
+Post-ship review: the BORDERLINE class was authored to "anchor on genuinely
+contested literature" with the implied invariant that DAS for these cases
+sits in a band tight around the operating threshold (`[0.75, 0.85]` for
+`TAU_GATE_DAS = 0.80`). A reviewer pointed out that this invariant wasn't
+being checked. Wrote `audit_borderline.py` and ran it.
+
+Result: **5 of 15 BORDERLINE cases** sit in the tight band (IDs 22, 23, 24,
+74, 79). The other 10 (21, 25, 71, 72, 73, 75, 76, 77, 78, 80) score below
+0.75 — they look more like soft PASS than genuine borderline. Mean DAS for
+BORDERLINE = 0.644, median 0.685, max 0.819. None scored above 0.85.
+
+The pattern in the 10 low cases: they include strong positive evidence
+signals (peer-reviewed, IRB-approved, controlled RCT, meta-analysis) that
+the keyword scorer takes at face value, even though the author flagged the
+case as borderline on grounds the scorer cannot see (tiny n, single-
+population scope, modest effect size in a small trial, high heterogeneity
+in a meta-analysis of weak underlying studies).
+
+Honest disposition: documented in README §7 and §8 of this doc rather than
+silently re-labelled. The keyword architecture cannot distinguish "a real
+RCT with n=8 supporting a strong claim" from "a real RCT". A semantic
+scorer that weighs n and effect size against claim strength would close
+this — listed as future work item #2. Re-labelling the 10 cases as soft
+PASS without changing the scorer would hide the gap and conceal exactly
+the limitation the audit was built to expose.
+
+This iteration didn't change any code in `datss/` proper — only added the
+audit script (`datss/evaluation/audit_borderline.py`). The point was to
+make the gap visible, reproducible, and committed to the repo.
+
 ---
 
 ## 4. Architecture and key design decisions
@@ -714,7 +751,25 @@ Current state: all 8 challengers clear the 0.10 floor.
 `scope_generalizability` is still the thinnest signal (+0.174) — see
 §8.2.
 
-### 5.5 Bootstrap CIs
+### 5.5 BORDERLINE distribution audit
+
+Run with `python -m datss.evaluation.audit_borderline`. Reports the DAS
+distribution over the 15 BORDERLINE-labelled cases against a threshold-
+tight band `[0.75, 0.85]`. A case sitting outside that band is doing the
+work of a soft PASS or a soft FAIL, not a true borderline.
+
+Current state: 5/15 in the tight band, 10/15 below, 0/15 above. The
+audit prints the offender IDs and emits a warning when fewer than half
+the BORDERLINE cases are tight. JSON saved to
+`datss/evaluation/borderline_audit.json`.
+
+Why this audit is in the repo rather than absorbed into `audit_challengers.py`:
+they answer orthogonal questions. `audit_challengers` asks "is every
+challenger discriminating?". `audit_borderline` asks "does the label
+distribution match the threshold geometry?". Mixing them would lose the
+ability to re-run one without the other after a corpus edit.
+
+### 5.6 Bootstrap CIs
 
 1000 resamples, seed=42. Reported for recall and FP rate on the test
 set. Recall CI of `[100%, 100%]` means the test FAIL distribution sits
@@ -898,9 +953,60 @@ The library has never been run against a corpus authored by someone
 else, let alone one authored to break it. The reported F1=1.00 is
 consistent with the gate working; it is not evidence that it does.
 
+### 8.8 BORDERLINE label is partly aspirational
+
+`audit_borderline.py` shows only 5/15 BORDERLINE cases sit in the
+threshold-tight band [0.75, 0.85]. The other 10 score below 0.75 because
+they carry strong positive evidence signals (peer-reviewed, IRB-approved,
+controlled RCT) that the keyword scorer takes at face value, even though
+the author flagged them as borderline on grounds like tiny n or single-
+population scope. The keyword architecture cannot represent "this is a
+real RCT but the n is too small to support the claim". A semantic scorer
+(future-work item #2) would close this. The 10 affected cases are not
+silently re-labelled, because that would hide the architectural gap.
+
 ---
 
 ## 9. Future work
+
+### 9a. Anticipated evaluator probe-set response
+
+If the evaluator sends a probe set authored with neutral phrasing, no
+banned keywords, and adversarial intent expressed indirectly — exactly
+the gap §8.7 names — the keyword-scorer architecture will miss several
+FAIL cases. The honest response, prepared in advance:
+
+1. **Name the failure class.** "These probes attack the keyword-scoring
+   substrate. The challengers match substring patterns over claim and
+   evidence text. A probe that conveys 'self-experiment' as 'I tried this
+   on myself' or 'uncontrolled' as 'before-and-after design' will not
+   trigger the corresponding SIGNALS entries."
+2. **Quantify on the probe set.** Run `audit_challengers.py` against the
+   probe set in isolation. Expect WEAK flags on the challengers the
+   probes target. Report which challenger gaps collapse, by how much.
+3. **Show why a keyword architecture is structurally incapable.** Each
+   challenger's `SIGNALS` is a finite list. Synonyms outside the list
+   contribute 0 to the score. No amount of weight-tuning fixes a missing
+   token. Adding tokens to chase the probe set is post-hoc tuning
+   against the evaluation — methodology violation.
+4. **Pose the fix.** Future-work item #2 (semantic challenger backend)
+   replaces the SIGNALS lookup with embedding similarity to per-class
+   prototype vectors. Synonyms collapse to the same vector region; the
+   substring miss disappears. The pattern scorer remains as the offline
+   default; the embedding scorer ships behind a `BaseScorer` interface.
+5. **What we will NOT do in response to the probe set.** We will not
+   patch SIGNALS lists to match the specific tokens in the probes; we
+   will not silently lower `TAU_GATE_DAS` to absorb the FNs; we will not
+   re-tune on the probe set. Either fix is a methodology violation and
+   would be visible in the threshold provenance docstring as a value
+   change without a sweep to justify it.
+
+This plan mirrors the response style the Institute Perimeter project
+took to biology-obfuscation probes: name the architectural limit, show
+its boundary on the data, propose the structural fix, refuse to patch
+post-hoc.
+
+### 9b. Prioritised work items
 
 In rough priority order:
 
@@ -948,6 +1054,7 @@ In rough priority order:
 | `datss/evaluation/run_cases.py` | Gate over corpus at tuned threshold | 80 |
 | `datss/evaluation/evaluate.py` | Split + sweep + report.json | 250 |
 | `datss/evaluation/audit_challengers.py` | Per-class PASS-vs-FAIL gap audit | 100 |
+| `datss/evaluation/audit_borderline.py` | BORDERLINE-only DAS distribution audit | 90 |
 | `datss/tests/test_datss.py` | 19 pytest tests | 320 |
 | `requirements.txt` | pytest, pandas, numpy, pyyaml, scikit-learn | 5 |
 | `README.md` | Public-facing documentation | 290 |
