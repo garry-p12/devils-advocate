@@ -200,11 +200,11 @@ Measured on the development machine (Darwin 23.5.0, Python 3.12, no GPU),
 | | latency |
 |---|---|
 | p50 | 0.21 ms |
-| p95 | 0.24 ms |
-| p99 | 0.26 ms |
+| p95 | 0.26 ms |
+| p99 | 0.39 ms |
 | budget (`TAU_GATE_LATENCY_P99_MS`) | 2000.0 ms |
 
-p99 is ~7700× under budget. The library is bound by the gate orchestration,
+p99 is ~5100× under budget. The library is bound by the gate orchestration,
 not the challengers themselves — substituting LLM-backed challengers would
 move latency by several orders of magnitude and the budget would need to be
 re-derived.
