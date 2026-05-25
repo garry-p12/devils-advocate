@@ -1,0 +1,223 @@
+{
+  "summary": {
+    "threshold": 0.8,
+    "n_pass": 10,
+    "n_fail": 17,
+    "n_borderline": 3,
+    "pass_correct": 10,
+    "fail_correct": 14,
+    "accuracy_decisive": 0.8888888888888888
+  },
+  "rows": [
+    {
+      "id": "A1",
+      "label": "FAIL",
+      "decision": "FAIL",
+      "das": 0.917,
+      "flag": "OK"
+    },
+    {
+      "id": "A2",
+      "label": "FAIL",
+      "decision": "FAIL",
+      "das": 0.879,
+      "flag": "OK"
+    },
+    {
+      "id": "A3",
+      "label": "FAIL",
+      "decision": "FAIL",
+      "das": 0.917,
+      "flag": "OK"
+    },
+    {
+      "id": "A4",
+      "label": "FAIL",
+      "decision": "FAIL",
+      "das": 0.879,
+      "flag": "OK"
+    },
+    {
+      "id": "A5",
+      "label": "FAIL",
+      "decision": "PASS",
+      "das": 0.796,
+      "flag": "MISS"
+    },
+    {
+      "id": "A6",
+      "label": "FAIL",
+      "decision": "PASS",
+      "das": 0.786,
+      "flag": "MISS"
+    },
+    {
+      "id": "A7",
+      "label": "FAIL",
+      "decision": "FAIL",
+      "das": 0.816,
+      "flag": "OK"
+    },
+    {
+      "id": "A8",
+      "label": "FAIL",
+      "decision": "FAIL",
+      "das": 0.807,
+      "flag": "OK"
+    },
+    {
+      "id": "A9",
+      "label": "FAIL",
+      "decision": "FAIL",
+      "das": 0.917,
+      "flag": "OK"
+    },
+    {
+      "id": "A10",
+      "label": "FAIL",
+      "decision": "FAIL",
+      "das": 0.917,
+      "flag": "OK"
+    },
+    {
+      "id": "A11",
+      "label": "FAIL",
+      "decision": "FAIL",
+      "das": 0.923,
+      "flag": "OK"
+    },
+    {
+      "id": "A12",
+      "label": "FAIL",
+      "decision": "FAIL",
+      "das": 0.917,
+      "flag": "OK"
+    },
+    {
+      "id": "A13",
+      "label": "FAIL",
+      "decision": "FAIL",
+      "das": 0.807,
+      "flag": "OK"
+    },
+    {
+      "id": "A14",
+      "label": "FAIL",
+      "decision": "PASS",
+      "das": 0.737,
+      "flag": "MISS"
+    },
+    {
+      "id": "A15",
+      "label": "PASS",
+      "decision": "PASS",
+      "das": 0.4,
+      "flag": "OK"
+    },
+    {
+      "id": "A16",
+      "label": "PASS",
+      "decision": "PASS",
+      "das": 0.477,
+      "flag": "OK"
+    },
+    {
+      "id": "A17",
+      "label": "PASS",
+      "decision": "PASS",
+      "das": 0.53,
+      "flag": "OK"
+    },
+    {
+      "id": "A18",
+      "label": "PASS",
+      "decision": "PASS",
+      "das": 0.727,
+      "flag": "OK"
+    },
+    {
+      "id": "A19",
+      "label": "PASS",
+      "decision": "PASS",
+      "das": 0.616,
+      "flag": "OK"
+    },
+    {
+      "id": "A20",
+      "label": "PASS",
+      "decision": "PASS",
+      "das": 0.664,
+      "flag": "OK"
+    },
+    {
+      "id": "A21",
+      "label": "PASS",
+      "decision": "PASS",
+      "das": 0.634,
+      "flag": "OK"
+    },
+    {
+      "id": "A22",
+      "label": "PASS",
+      "decision": "PASS",
+      "das": 0.515,
+      "flag": "OK"
+    },
+    {
+      "id": "A23",
+      "label": "BORDERLINE",
+      "decision": "PASS",
+      "das": 0.67,
+      "flag": "\u2014"
+    },
+    {
+      "id": "A24",
+      "label": "BORDERLINE",
+      "decision": "PASS",
+      "das": 0.796,
+      "flag": "\u2014"
+    },
+    {
+      "id": "A25",
+      "label": "BORDERLINE",
+      "decision": "PASS",
+      "das": 0.671,
+      "flag": "\u2014"
+    },
+    {
+      "id": "A26",
+      "label": "FAIL",
+      "decision": "FAIL",
+      "das": 0.807,
+      "flag": "OK"
+    },
+    {
+      "id": "A27",
+      "label": "FAIL",
+      "decision": "FAIL",
+      "das": 0.852,
+      "flag": "OK"
+    },
+    {
+      "id": "A28",
+      "label": "FAIL",
+      "decision": "FAIL",
+      "das": 0.852,
+      "flag": "OK"
+    },
+    {
+      "id": "A29",
+      "label": "PASS",
+      "decision": "PASS",
+      "das": 0.727,
+      "flag": "OK"
+    },
+    {
+      "id": "A30",
+      "label": "PASS",
+      "decision": "PASS",
+      "das": 0.404,
+      "flag": "OK"
+    }
+  ]
+}

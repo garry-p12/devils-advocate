@@ -2,10 +2,11 @@
 #
 # These values mirror the named thresholds in datss/thresholds.py. The
 # threshold module is the source of truth for policy code; this file is the
-# audit-friendly summary suitable for ops review.
+# audit-friendly summary suitable for ops review. If the two disagree the
+# threshold module wins (see test_yaml_matches_thresholds in tests/).
 
 gate:
-  tau_gate_das: 0.92              # DAS >= this => FAIL
+  tau_gate_das: 0.80              # DAS >= this => FAIL  (spec-named was 0.92; tuned 0.80 per thresholds.py history block)
   tau_gate_latency_p99_ms: 2000.0 # end-to-end budget
 
 pool:

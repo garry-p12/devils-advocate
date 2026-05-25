@@ -321,3 +321,29 @@ def test_bias_class_is_closed():
 
     # The pool registry coverage denominator is stable.
     assert len(BiasClass) == 8
+
+
+# --- 19. config/defaults.yaml mirrors thresholds.py ----------------------
+
+def test_yaml_matches_thresholds():
+    """
+    defaults.yaml claims to mirror thresholds.py. If they disagree, an auditor
+    reading the YAML gets a wrong number — the code is still right, but the
+    documentation lies. Round 2 reviewer feedback caught this drift after the
+    TAU_GATE_DAS tune from 0.92 to 0.80.
+    """
+    import os
+    import yaml
+    yaml_path = os.path.join(
+        os.path.dirname(__file__), "..", "config", "defaults.yaml"
+    )
+    with open(yaml_path) as f:
+        cfg = yaml.safe_load(f)
+    assert cfg["gate"]["tau_gate_das"] == TAU_GATE_DAS, (
+        f"defaults.yaml has tau_gate_das={cfg['gate']['tau_gate_das']} but "
+        f"thresholds.py has TAU_GATE_DAS={TAU_GATE_DAS}. Update YAML to match."
+    )
+    assert cfg["gate"]["tau_gate_latency_p99_ms"] == TAU_GATE_LATENCY_P99_MS
+    assert cfg["pool"]["default_size"] == TAU_POOL_DEFAULT_SIZE
+    assert cfg["pool"]["min_challengers"] == TAU_POOL_MIN_CHALLENGERS
+    assert cfg["pool"]["coverage_floor"] == TAU_POOL_COVERAGE_FLOOR

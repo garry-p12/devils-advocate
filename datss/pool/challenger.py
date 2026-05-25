@@ -25,6 +25,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Tuple
 
 from datss.models import BiasClass, ChallengerResult
+from datss.pool.structural import StructuralFeatures, compute_features
 from datss.thresholds import TAU_SCORE_CLIP_MAX, TAU_SCORE_CLIP_MIN
 
 
@@ -54,6 +55,12 @@ class BaseChallenger(ABC):
     SIGNALS: List[Tuple[str, float]] = []
     BASE_SCORE: float = 0.78  # prior: high suspicion until evidence exonerates
 
+    # Name of the StructuralFeatures attribute consumed by this challenger.
+    # Set per subclass (e.g. "evidence_quality_delta"). The structural delta
+    # is added to BASE_SCORE alongside the SIGNALS delta — the structural
+    # path catches probes that avoid the domain vocabulary in SIGNALS.
+    STRUCTURAL_DELTA_ATTR: str = ""
+
     @abstractmethod
     def challenge(
         self,
@@ -65,8 +72,46 @@ class BaseChallenger(ABC):
         ...
 
 
+def _summarise_structural_triggers(f: StructuralFeatures) -> List[str]:
+    """Human-readable structural triggers, for the critique field."""
+    bits: List[str] = []
+    if f.n is not None:
+        bits.append(f"n={f.n}")
+    if f.is_single_subject:
+        bits.append("single-subject")
+    if f.has_no_control:
+        bits.append("no-control")
+    if f.is_stopped_early:
+        bits.append("stopped-early")
+    if f.is_subjective_outcome:
+        bits.append("subjective-outcome")
+    if f.has_weak_source:
+        bits.append("weak-source")
+    if f.has_strong_source:
+        bits.append("strong-source")
+    if f.replication_count >= 1:
+        bits.append(f"replicated×{f.replication_count}")
+    if f.has_randomization:
+        bits.append("randomized")
+    if f.claims_large_effect:
+        bits.append("large-effect-claim")
+    if f.claims_no_statistics:
+        bits.append("no-statistics")
+    if f.is_in_vitro_scope:
+        bits.append("in-vitro-scope")
+    return bits
+
+
 class _PatternChallenger(BaseChallenger):
-    """Shared scoring/critique skeleton driven by SIGNALS."""
+    """
+    Shared scoring/critique skeleton.
+
+    Score = BASE_SCORE + SIGNALS_delta + STRUCTURAL_delta + small seeded jitter,
+    clipped to [0, 1]. SIGNALS catches domain-specific vocabulary; the
+    structural delta catches evidentiary shape regardless of vocabulary.
+    The structural path is what closes the keyword-only gap the round-2
+    reviewer identified.
+    """
 
     def challenge(
         self,
@@ -78,13 +123,26 @@ class _PatternChallenger(BaseChallenger):
         t0 = time.perf_counter()
         rng = random.Random(seed)
         text = _flatten_text(claim, evidence)
-        delta, triggers = _apply_signals(text, self.SIGNALS)
+        signal_delta, triggers = _apply_signals(text, self.SIGNALS)
+
+        features = compute_features(claim, evidence) if isinstance(evidence, dict) else None
+        structural_delta = 0.0
+        struct_bits: List[str] = []
+        if features is not None and self.STRUCTURAL_DELTA_ATTR:
+            structural_delta = float(getattr(features, self.STRUCTURAL_DELTA_ATTR))
+            struct_bits = _summarise_structural_triggers(features)
+
         jitter = rng.uniform(-0.03, 0.03)
-        score = _clip(self.BASE_SCORE + delta + jitter)
-        critique = (
-            f"[{self.bias_class.value}] score={score:.3f} "
-            f"triggers={triggers or ['none']}"
-        )
+        score = _clip(self.BASE_SCORE + signal_delta + structural_delta + jitter)
+
+        critique_parts = [f"[{self.bias_class.value}] score={score:.3f}"]
+        critique_parts.append(f"signals={triggers or ['none']}")
+        if struct_bits:
+            critique_parts.append(
+                f"structural[{structural_delta:+.2f}]={struct_bits}"
+            )
+        critique = " ".join(critique_parts)
+
         latency_ms = (time.perf_counter() - t0) * 1000.0
         return ChallengerResult(
             challenger_id=challenger_id,
@@ -99,6 +157,7 @@ class _PatternChallenger(BaseChallenger):
 class EvidenceQualityChallenger(_PatternChallenger):
     bias_class = BiasClass.EVIDENCE_QUALITY
     BASE_SCORE = 0.80
+    STRUCTURAL_DELTA_ATTR = "evidence_quality_delta"
     SIGNALS = [
         ("preliminary",            +0.22),
         ("pilot",                  +0.20),
@@ -125,6 +184,7 @@ class EvidenceQualityChallenger(_PatternChallenger):
 class MethodologyChallenger(_PatternChallenger):
     bias_class = BiasClass.METHODOLOGY
     BASE_SCORE = 0.78
+    STRUCTURAL_DELTA_ATTR = "methodology_delta"
     SIGNALS = [
         ("uncontrolled",           +0.30),
         ("no control",             +0.30),
@@ -151,6 +211,7 @@ class MethodologyChallenger(_PatternChallenger):
 class AlternativeHypothesisChallenger(_PatternChallenger):
     bias_class = BiasClass.ALTERNATIVE_HYPOTHESIS
     BASE_SCORE = 0.75
+    STRUCTURAL_DELTA_ATTR = "alt_hypothesis_delta"
     SIGNALS = [
         ("correlation",            +0.25),
         ("associated with",        +0.18),
@@ -174,6 +235,7 @@ class AlternativeHypothesisChallenger(_PatternChallenger):
 class ScopeGeneralizabilityChallenger(_PatternChallenger):
     bias_class = BiasClass.SCOPE_GENERALIZABILITY
     BASE_SCORE = 0.78
+    STRUCTURAL_DELTA_ATTR = "scope_delta"
     SIGNALS = [
         ("mice",                   +0.28),
         ("rats",                   +0.28),
@@ -200,6 +262,7 @@ class ScopeGeneralizabilityChallenger(_PatternChallenger):
 class ProvenanceCOIChallenger(_PatternChallenger):
     bias_class = BiasClass.PROVENANCE_COI
     BASE_SCORE = 0.75
+    STRUCTURAL_DELTA_ATTR = "provenance_delta"
     SIGNALS = [
         ("industry funded",        +0.28),
         ("industry-funded",        +0.28),
@@ -230,6 +293,7 @@ class ProvenanceCOIChallenger(_PatternChallenger):
 class InternalConsistencyChallenger(_PatternChallenger):
     bias_class = BiasClass.INTERNAL_CONSISTENCY
     BASE_SCORE = 0.72
+    STRUCTURAL_DELTA_ATTR = "internal_consistency_delta"
     SIGNALS = [
         ("contradicts",            +0.30),
         ("inconsistent",           +0.28),
@@ -244,43 +308,15 @@ class InternalConsistencyChallenger(_PatternChallenger):
         ("matches prior",          -0.22),
         ("matches the data",       -0.20),
     ]
-
-    def challenge(self, claim, evidence, seed, challenger_id):
-        # Numeric mismatch heuristic: tiny n + giant effect = internal red flag.
-        t0 = time.perf_counter()
-        rng = random.Random(seed)
-        text = _flatten_text(claim, evidence)
-        delta, triggers = _apply_signals(text, self.SIGNALS)
-
-        n = evidence.get("n") if isinstance(evidence, dict) else None
-        if isinstance(n, int) and n < 30 and any(
-            s in text for s in ["40%", "50%", "60%", "70%", "reverses", "cures", "doubles"]
-        ):
-            delta += 0.35
-            triggers.append("tiny-n vs giant-effect")
-        if isinstance(n, int) and n >= 1000:
-            delta -= 0.15
-            triggers.append("large-n stabilizes")
-
-        score = _clip(self.BASE_SCORE + delta + rng.uniform(-0.03, 0.03))
-        critique = (
-            f"[{self.bias_class.value}] score={score:.3f} "
-            f"triggers={triggers or ['none']}"
-        )
-        latency_ms = (time.perf_counter() - t0) * 1000.0
-        return ChallengerResult(
-            challenger_id=challenger_id,
-            bias_class=self.bias_class,
-            seed=seed,
-            score=score,
-            critique=critique,
-            latency_ms=latency_ms,
-        )
+    # No custom challenge() — the base _PatternChallenger combines SIGNALS +
+    # internal_consistency_delta from structural.compute_features, which already
+    # handles tiny-n + giant-effect (see structural.py).
 
 
 class PriorArtConflictChallenger(_PatternChallenger):
     bias_class = BiasClass.PRIOR_ART_CONFLICT
     BASE_SCORE = 0.75
+    STRUCTURAL_DELTA_ATTR = "prior_art_delta"
     SIGNALS = [
         ("contradicts prior",      +0.30),
         ("conflicts with",         +0.25),
@@ -304,6 +340,7 @@ class PriorArtConflictChallenger(_PatternChallenger):
 class SafetyEthicsChallenger(_PatternChallenger):
     bias_class = BiasClass.SAFETY_ETHICS
     BASE_SCORE = 0.72
+    STRUCTURAL_DELTA_ATTR = "safety_delta"
     SIGNALS = [
         ("off-label",              +0.20),
         ("no irb",                 +0.40),

@@ -6,42 +6,42 @@
     ],
     "tau_gate_das": 0.8,
     "n": 15,
-    "in_band": 5,
-    "below": 10,
-    "above": 0,
-    "mean": 0.644,
-    "median": 0.685,
-    "min": 0.369,
-    "max": 0.819
+    "in_band": 3,
+    "below": 11,
+    "above": 1,
+    "mean": 0.621,
+    "median": 0.674,
+    "min": 0.345,
+    "max": 0.862
   },
   "rows": [
     {
       "id": 21,
-      "das": 0.63,
+      "das": 0.607,
       "decision": "PASS",
       "band": "low"
     },
     {
       "id": 22,
-      "das": 0.785,
+      "das": 0.724,
       "decision": "PASS",
-      "band": "tight"
+      "band": "low"
     },
     {
       "id": 23,
-      "das": 0.793,
-      "decision": "PASS",
-      "band": "tight"
-    },
-    {
-      "id": 24,
       "das": 0.812,
       "decision": "FAIL",
       "band": "tight"
     },
     {
+      "id": 24,
+      "das": 0.784,
+      "decision": "PASS",
+      "band": "tight"
+    },
+    {
       "id": 25,
-      "das": 0.685,
+      "das": 0.701,
       "decision": "PASS",
       "band": "low"
     },
@@ -53,55 +53,55 @@
     },
     {
       "id": 72,
-      "das": 0.519,
+      "das": 0.451,
       "decision": "PASS",
       "band": "low"
     },
     {
       "id": 73,
-      "das": 0.438,
+      "das": 0.345,
       "decision": "PASS",
       "band": "low"
     },
     {
       "id": 74,
-      "das": 0.819,
+      "das": 0.862,
       "decision": "FAIL",
-      "band": "tight"
+      "band": "high"
     },
     {
       "id": 75,
-      "das": 0.701,
+      "das": 0.674,
       "decision": "PASS",
       "band": "low"
     },
     {
       "id": 76,
-      "das": 0.701,
+      "das": 0.679,
       "decision": "PASS",
       "band": "low"
     },
     {
       "id": 77,
-      "das": 0.441,
+      "das": 0.406,
       "decision": "PASS",
       "band": "low"
     },
     {
       "id": 78,
-      "das": 0.613,
+      "das": 0.536,
       "decision": "PASS",
       "band": "low"
     },
     {
       "id": 79,
-      "das": 0.779,
-      "decision": "PASS",
+      "das": 0.849,
+      "decision": "FAIL",
       "band": "tight"
     },
     {
       "id": 80,
-      "das": 0.571,
+      "das": 0.51,
       "decision": "PASS",
       "band": "low"
     }
