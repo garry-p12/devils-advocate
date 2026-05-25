@@ -292,13 +292,6 @@ re-derived.
   is structured so a `BaseChallenger` subclass can wrap any model behind the
   same interface — but the in-tree implementations are deliberately offline.
 
-- **Corpus size and test set.** 80 authored cases, 15 held out for test.
-  Bootstrap recall CI on test is `[100%, 100%]` — tight because the seven
-  test FAIL cases are well above threshold, not because the corpus is large.
-  Real deployment should expand to several hundred cases including
-  adversarial edge cases authored *to defeat* the keyword patterns (the
-  current corpus does not deliberately attempt to evade the challengers).
-
 - **Stratification compromise.** Three-class stratified sklearn splits
   require ≥3 rows per fold per class; on the previous 25-case corpus
   sklearn's stratify rejected the val fold. The split in `evaluate.py` is
@@ -306,14 +299,6 @@ re-derived.
   proportions but is not the exact sklearn API. At 80 cases sklearn would
   work too — keeping the manual splitter for reproducibility across corpus
   sizes.
-
-- **No external model calls.** Per the task details, every challenger runs offline and
-  deterministically. There is no LLM-backed scorer behind any
-  `BaseScorer` interface in this library.
-
-- **No vendor lock-in.** Challenger schemas, identifiers, and the public API
-  are vendor-neutral. No cloud-service, model-SKU, or GPU-stack names appear
-  in `datss/`.
 
 ---
 
