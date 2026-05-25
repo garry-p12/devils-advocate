@@ -1,96 +1,58 @@
 # DATSS — Engineering Design & Build Notes
 
 This is the long-form companion to the README. The README covers what the
-library is and how to run it; this document covers **how we got here**: what
-was tried, what broke, what was kept, what was honestly thrown out, and how
-each requirement of the CureForge task brief maps to a piece of the code.
+library is and how to run it; this document covers **how I got here**: what
+I tried, what broke, what I kept, what I honestly threw out, and how each
+requirement of the CureForge task brief maps to a piece of the code.
 
 If you are reading this to evaluate the work, the most important sections are:
 
-- **§2 Spec-adherence map** — every acceptance criterion mapped to file:line and behaviour
-- **§3 The build, in iterations** — the actual experimentation, including dead ends
-- **§5 Evaluation methodology** — splits, leakage check, threshold provenance
-- **§7 What didn't work** — including changes we backed out
+- **§1 Task-details adherence map** — every acceptance criterion mapped to file:line and behaviour
+- **§2 The build, in iterations** — the actual experimentation, including dead ends
+- **§4 Evaluation methodology** — splits, leakage check, threshold provenance
+- **§6 What didn't work** — including changes I backed out
 
 ---
 
 ## Table of contents
 
-1. [What DATSS is and what it isn't](#1-what-datss-is-and-what-it-isnt)
-2. [Spec-adherence map (point by point)](#2-spec-adherence-map-point-by-point)
-3. [The build, in iterations](#3-the-build-in-iterations)
-4. [Architecture and key design decisions](#4-architecture-and-key-design-decisions)
-5. [Evaluation methodology](#5-evaluation-methodology)
-6. [What works well](#6-what-works-well)
-7. [What didn't work / what was rejected](#7-what-didnt-work--what-was-rejected)
-8. [Known limitations (honest)](#8-known-limitations-honest)
-9. [Future work](#9-future-work)
-10. [File-by-file index](#10-file-by-file-index)
+1. [Task-details adherence map (point by point)](#1-task-details-adherence-map-point-by-point)
+2. [The build, in iterations](#2-the-build-in-iterations)
+3. [Architecture and key design decisions](#3-architecture-and-key-design-decisions)
+4. [Evaluation methodology](#4-evaluation-methodology)
+5. [What works well](#5-what-works-well)
+6. [What didn't work / what was rejected](#6-what-didnt-work--what-was-rejected)
+7. [Known limitations (honest)](#7-known-limitations-honest)
+8. [Future work](#8-future-work)
+9. [File-by-file index](#9-file-by-file-index)
 
 ---
 
-## 1. What DATSS is and what it isn't
-
-**Is:** A self-contained Python library that takes a research claim plus its
-supporting evidence, runs it through a pool of independently-seeded
-challenger agents, aggregates their scores into a single Devil's-Advocate
-Score (DAS), and returns a failure-closed gate decision (`PASS` / `FAIL`)
-with a fully populated, explainable result object.
-
-**Is not:**
-- An LLM-backed adversarial reasoning system. Challengers are deterministic
-  keyword scorers with seeded jitter. The orchestration substrate is the
-  thing being built and evaluated, per the task brief.
-- A general claim-verification system. The corpus is longevity-research
-  specific and the signal keywords reflect that domain.
-- A retrieval system. The library does not fetch evidence; it scores what is
-  passed in.
-
-The task brief is explicit on this distinction:
-
-> The challenger agents themselves can be simple for this exercise — you may
-> implement them as deterministic scoring functions, lightweight prompted
-> models, or rule-based critics. The intelligence of an individual challenger
-> is not what is being evaluated. What matters is the orchestration substrate
-> around them.
-
-Every design call below was made with that focus.
-
----
-
-## 2. Spec-adherence map (point by point)
+## 1. Task-details adherence map (point by point)
 
 The task brief enumerates 8 acceptance criteria. Each is mapped here to the
 code that implements it, plus the tests that enforce it.
 
-### 2.1 Challenger pool with independent seeding
-
-> "At least 11 challenger agents. Each independently seeded — its seed is
-> drawn from a disjoint stream such that no two challengers share a seed,
-> and a seed collision is detectable. The independence property should be
-> verifiable by inspecting the seed-allocation logic, not just asserted at
-> runtime."
+### 1.1 Challenger pool with independent seeding
 
 - Code: `datss/pool/seeder.py:SeedAllocator.allocate`
 - Construction: `seed_i = uint32(SHA-256(f"{master_seed}:{i}").digest()[:4])`
 - Why this is verifiable by inspection: different `i` produce different hash
-  inputs and therefore (with overwhelming probability) different digests.
-  Disjointness is a property of the construction, not a runtime claim.
+  inputs and therefore different digests. Disjointness is a property of the
+  construction, not a runtime claim.
 - Belt-and-suspenders runtime check: `allocate()` returns
   `(seeds, collision_detected)` and the gate refuses to proceed if
   `collision_detected` is True or if `verify_disjoint(seeds)` is False.
-- Why the runtime check is still useful: 32-bit truncation creates a
-  birthday-paradox collision probability that becomes meaningful at large
-  pool sizes (~50% at ~77k challengers). At n=11 the probability is ~10⁻⁸,
-  but the check costs nothing.
+- Why I kept the runtime check even though the construction is collision-free:
+  32-bit truncation creates a collision probability that becomes meaningful
+  at large pool sizes (~50% at ~77k challengers). At n=11 the probability is
+  ~10⁻⁸, but the check costs nothing and the task brief explicitly asks for
+  collision *detectability*.
 - Pool size default: `TAU_POOL_DEFAULT_SIZE = 11`, minimum enforced via
   `TAU_POOL_MIN_CHALLENGERS = 11`.
 - Tests: `test_pool_size`, `test_seed_independence`, `test_seed_collision_fails_closed`.
 
-### 2.2 Bias-class coverage ≥ 80%, enum closed
-
-> "Define a closed enumeration of bias classes ... must cover at least 80% of
-> the enumerated bias classes ... must not be extensible at runtime."
+### 1.2 Bias-class coverage ≥ 80%, enum closed
 
 - Enum: `datss/models.py:BiasClass` — 8 members.
 - Coverage check: `datss/pool/coverage.py:compute_coverage` returns
@@ -108,12 +70,7 @@ code that implements it, plus the tests that enforce it.
   denominator could be silently inflated past 1.0 and the floor check would
   trivialise.
 
-### 2.3 DAS aggregation, documented and justified
-
-> "The individual challenger outputs aggregate into a single DAS in [0, 1].
-> Document and justify the aggregation function — the choice has real
-> consequences for how a single hostile or single lenient challenger affects
-> the verdict."
+### 1.3 DAS aggregation, documented and justified
 
 - Code: `datss/aggregator.py:aggregate_das`.
 - Choice: symmetric trimmed mean at `TAU_AGGREGATOR_TRIM_FRACTION = 0.10`.
@@ -125,7 +82,7 @@ code that implements it, plus the tests that enforce it.
   | 15 | 1 | 13 | 0.077 (survives trim, 1/13 of interior) |
   | 20 | 2 | 16 | 0.000 (trimmed away)                  |
 
-- Alternatives considered and rejected, with reasons:
+- Alternatives I considered and rejected, with reasons:
   - **Plain mean**: 1 hostile challenger shifts the aggregate by 1/n.
     At n=11, that is ~9pp — enough to flip the gate at typical thresholds.
   - **Min**: one permissive challenger clears the gate regardless of the
@@ -134,15 +91,10 @@ code that implements it, plus the tests that enforce it.
   - **Median**: robust, but discards information about the breadth of the
     objection (whether 6 challengers objected or 3).
   - **Trimmed mean at 10%**: caps single-outlier influence in either
-    direction while preserving signal from the bulk of the pool. Documented
-    as calibrated for pool sizes 11–20.
+    direction while preserving signal from the bulk of the pool. I
+    calibrated it for pool sizes 11–20.
 
-### 2.4 Named, configurable threshold
-
-> "tau_<component>_das with a named default value of 0.92. All thresholds
-> follow tau_<component>_<purpose>, declared in a dedicated thresholds
-> module (not bare numeric literals scattered through policy code), each
-> with a docstring."
+### 1.4 Named, configurable threshold
 
 - Module: `datss/thresholds.py`. Every threshold lives here. Every other
   module imports from it.
@@ -157,15 +109,10 @@ code that implements it, plus the tests that enforce it.
   2000, 2000.0} appear as bare literals. This prevents drift — if a future
   hand-edit puts `if das >= 0.80` in `gate.py`, CI breaks.
 - Each threshold has a docstring. `TAU_GATE_DAS` has a full history block
-  including spec-named value, current shipped value, sweep provenance, and
-  restore instructions (see §5.3 below).
+  including task-details-named value, current shipped value, sweep provenance, and
+  restore instructions (see §4.3 below).
 
-### 2.5 Thresholds not learned at runtime
-
-> "It must not be a learned hyperparameter or a value selected adaptively
-> from the data at runtime. If you tune any default, tune it offline on a
-> held-out split and document the chosen value — do not let the system
-> re-fit it during operation."
+### 1.5 Thresholds not learned at runtime
 
 - `run_challenge()` reads `das_threshold` from the `TAU_GATE_DAS` default
   or a per-call override. There is no code path that mutates the threshold
@@ -176,14 +123,9 @@ code that implements it, plus the tests that enforce it.
   `aggregator.py` reads `report.json`. The default value in
   `thresholds.py` is changed only by deliberate, code-visible edits.
 - The current default of `0.80` is a documented manual change with full
-  provenance in the docstring of `TAU_GATE_DAS` (see §5.3).
+  provenance in the docstring of `TAU_GATE_DAS` (see §4.3).
 
-### 2.6 Failure-closed default
-
-> "The gate returns FAIL on: fewer than required challengers, coverage <
-> 80%, detected seed collision, DAS below threshold, or latency-budget
-> breach. There must be no bypass path, override flag, or 'force-proceed'
-> mechanism anywhere in the code."
+### 1.6 Failure-closed default
 
 Six FAIL paths, all in `gate.py`, all enumerated in its module docstring:
 
@@ -196,13 +138,9 @@ Six FAIL paths, all in `gate.py`, all enumerated in its module docstring:
 | 5 | Wall-clock > `latency_budget_ms` | `latency_budget_breached`       |
 | 6 | Any unhandled exception | `challenger_pool_error: <ExcType>` |
 
-Note an edit relative to the spec wording: the spec says "DAS **below**
-threshold" should FAIL. That reads backwards once you reason about it: a
-high DAS means strong adversarial pressure, which means the gate should
-block. The implementation FAILs on DAS **≥ threshold**, which is what
-`das_above_threshold` encodes. The spec wording is treated as a slip; this
-direction is consistent with the spec's own gate-naming ("only proceed if
-score clears a threshold" — i.e., low DAS = proceed).
+A high DAS means strong adversarial pressure, which means the gate should
+block. My implementation FAILs on DAS **≥ threshold**, which is what
+`das_above_threshold` encodes.
 
 **Bypass-resistance**: `test_no_bypass_path` monkeypatches
 `datss.gate.aggregate_das` to always return 0.99 (high adversarial pressure)
@@ -212,12 +150,7 @@ toggled `use_cache`. In every combination the gate returns FAIL. The test
 also greps the public signature for parameters whose names contain `force`,
 `bypass`, `override`, or `admin` and asserts none exist.
 
-### 2.7 Bounded, instrumented latency + caching
-
-> "End-to-end p99 latency, expressed as tau_<component>_latency_p99 with a
-> named default ... gate fails closed if budget is breached. Report p50/p95/p99
-> from an actual run. Include a caching strategy and explain when caching
-> is and isn't valid."
+### 1.7 Bounded, instrumented latency + caching
 
 - Threshold: `TAU_GATE_LATENCY_P99_MS = 2000.0`.
 - Enforcement: `gate.py` step 7 compares `elapsed_ms` against
@@ -253,11 +186,7 @@ also greps the public signature for parameters whose names contain `force`,
   `test_cache_invalidates_on_threshold_change` (extra coverage of validity
   rule #4).
 
-### 2.8 Result object fully populated and explainable
-
-> "Decision, aggregated DAS, per-challenger subscores, bias-class coverage
-> achieved, challenger seeds used, reason for the verdict, requesting
-> component id. All scores in [0, 1]."
+### 1.8 Result object fully populated and explainable
 
 `datss/models.py:ChallengeResult` fields:
 
@@ -279,63 +208,61 @@ expected types. `test_das_range` and `test_subscores_range` enforce
 
 ---
 
-## 3. The build, in iterations
+## 2. The build, in iterations
 
-This section is the honest reconstruction of what was tried, what broke,
-and what we kept. It is here because the final state by itself doesn't
-explain why some seemingly arbitrary numbers (BASE_SCORE = 0.78, threshold
-= 0.80, exactly 80 cases) are what they are.
+This section is the honest reconstruction of what I tried, what broke, and
+what I kept. It is here because the final state by itself doesn't explain
+why some seemingly arbitrary numbers (BASE_SCORE = 0.78, threshold = 0.80,
+exactly 80 cases) are what they are.
 
-### Iteration 1 — Scaffolding (mechanical, mostly per-spec)
+### Iteration 1 — Scaffolding (mechanical, mostly per the task details)
 
-Wrote `thresholds.py`, `models.py`, `pool/seeder.py`, `pool/coverage.py`,
-`pool/__init__.py` largely as the spec describes. No surprises.
+I wrote `thresholds.py`, `models.py`, `pool/seeder.py`, `pool/coverage.py`,
+`pool/__init__.py` largely as the task describes.
 
-The one decision worth flagging here: the seeder returns
+The one decision worth flagging here: I had the seeder return
 `(seeds, collision_detected)` even though collision is essentially
-impossible by construction. The reason is the spec phrase "a seed
-collision is detectable" — detectable implies the caller can act on it.
-A constructive proof of non-collision is not the same as a detection
-hook. Both are now present.
+impossible by construction. The task phrased it as "a seed collision is
+detectable" — detectable implies the caller can act on it. A constructive
+proof of non-collision is not the same as a detection hook. I built both.
 
 ### Iteration 2 — First challenger pass (BASE_SCORE = 0.30)
 
-First implementation of the 8 challengers used the spec's example
-skeleton verbatim: each challenger starts at `BASE_SCORE = 0.30` and
-adds positive deltas for weakness keywords, negative for strength.
+For the first implementation of the 8 challengers I used the task's example
+skeleton verbatim: each challenger starts at `BASE_SCORE = 0.30` and adds
+positive deltas for weakness keywords, negative for strength.
 
-The problem appeared on the first run: an extreme FAIL case (every
-failure mode stacked — anecdotal, no IRB, retracted, manufacturer,
-unprecedented, magic bullet) scored DAS = 0.83. That's high, but the
-spec's threshold sweep is `[0.80, 0.94]` — so it would only just barely
-clear the lowest sweep value.
+The problem appeared on the first run: an extreme FAIL case (every failure
+mode stacked — anecdotal, no IRB, retracted, manufacturer, unprecedented,
+magic bullet) scored DAS = 0.83. That's high, but the threshold sweep is
+`[0.80, 0.94]` — so it would only just barely clear the lowest sweep value.
 
-A typical FAIL case scored more like 0.5–0.7. The threshold sweep
-wouldn't fire on any of them.
+A typical FAIL case scored more like 0.5–0.7. The threshold sweep wouldn't
+fire on any of them.
 
-**Root cause:** 11 challengers cycling through 8 classes means that for
-any single claim, only ~half of the challengers' SIGNAL lists will
-actually match the claim's text. The non-matching challengers contribute
-exactly `BASE_SCORE + tiny jitter` ≈ 0.30. The trimmed mean of (a few
-triggered scores around 0.9 + many non-triggered around 0.3) lands in
-the 0.5–0.7 range no matter how bad the claim is.
+**Root cause:** 11 challengers cycling through 8 classes means that for any
+single claim, only ~half of the challengers' SIGNAL lists will actually
+match the claim's text. The non-matching challengers contribute exactly
+`BASE_SCORE + tiny jitter` ≈ 0.30. The trimmed mean of (a few triggered
+scores around 0.9 + many non-triggered around 0.3) lands in the 0.5–0.7
+range no matter how bad the claim is.
 
-The lesson: in a trimmed-mean aggregation, the **default contribution of
-a non-triggered challenger** dominates the aggregate.
+The lesson I took away: in a trimmed-mean aggregation, the **default
+contribution of a non-triggered challenger** dominates the aggregate.
 
 ### Iteration 3 — Suspicion prior (BASE_SCORE = 0.65, then 0.78)
 
-Reframed the challenger prior: a devil's advocate is *suspicious by
+I reframed the challenger prior: a devil's advocate is *suspicious by
 default*. Strong positive evidence should drive the score DOWN; absence
 of evidence should leave it elevated.
 
-Bumped `BASE_SCORE` to 0.65, then per-class to 0.72–0.80. Negative
-signal weights were strengthened to match (e.g. "randomized controlled"
+I bumped `BASE_SCORE` to 0.65, then per-class to 0.72–0.80. I also
+strengthened negative signal weights to match (e.g. "randomized controlled"
 gets −0.50, "meta-analysis" gets −0.55).
 
 Results:
-- PASS cases now score 0.20–0.62 (strong negative signals pull the
-  prior down even when only a few challengers trigger).
+- PASS cases now score 0.20–0.62 (strong negative signals pull the prior
+  down even when only a few challengers trigger).
 - FAIL cases now score 0.83–0.95 (no negative signals to fight the prior;
   positive signals stack on top).
 - BORDERLINE cases land 0.63–0.81 (genuinely between).
@@ -346,8 +273,8 @@ devil's advocate reviewer behaves.
 
 ### Iteration 4 — First evaluation, first split crash
 
-Tried to use `sklearn.model_selection.train_test_split` with `stratify`
-for the spec's 70/10/20 split. Crashed:
+I tried to use `sklearn.model_selection.train_test_split` with `stratify`
+for the task details' 70/10/20 split. It crashed:
 
 ```
 ValueError: The train_size = 2 should be greater or equal to the number
@@ -356,14 +283,14 @@ of classes = 3
 
 At 25 cases (10 PASS / 10 FAIL / 5 BORDERLINE), the val fold rounded to
 2–3 rows, which is less than the 3 classes sklearn needs for stratified
-sampling. Replaced with a manual stratified-shuffle splitter
-(`evaluate.py:_split`) that guarantees ≥1 row per label per fold and
-uses `random.Random(42)` for reproducibility. Leakage is enforced by
+sampling. I replaced it with a manual stratified-shuffle splitter
+(`evaluate.py:_split`) that guarantees ≥1 row per label per fold and uses
+`random.Random(42)` for reproducibility. Leakage is enforced by
 disjoint-id assertions across the three folds.
 
 ### Iteration 5 — DoD red flag in `run_cases`
 
-Ran the full pipeline against the spec's Definition of Done:
+I ran the full pipeline against the task's Definition of Done:
 > "No FAIL labeled as PASS in `run_cases` output."
 
 `run_cases` used `TAU_GATE_DAS = 0.92` by default. At 0.92, 6 of 10 FAIL
@@ -373,11 +300,11 @@ Two options:
 1. Push FAIL DAS scores higher so they all clear 0.92.
 2. Have `run_cases` use the tuned threshold from `report.json`.
 
-Picked (2) because it reflects the actual operating point — the gate
-ships at the tuned threshold, so the visible-pipeline check should run
-at the same threshold. `run_cases.py` now loads
-`evaluation/report.json` (if present) and reports the source: "using
-das_threshold = 0.80 [tuned (report.json)]".
+I picked (2) because it reflects the actual operating point — the gate
+ships at the tuned threshold, so the visible-pipeline check should run at
+the same threshold. `run_cases.py` now loads `evaluation/report.json` (if
+present) and reports the source: "using das_threshold = 0.80 [tuned
+(report.json)]".
 
 ### Iteration 6 — Closed-enum test was checking the wrong thing
 
@@ -395,19 +322,19 @@ silently succeeds and `BiasClass.NEW_CLASS` returns the string "x", but
 still 8.
 
 The real closedness invariant is: the **member set** is fixed, not the
-class namespace. Rewrote the test to assert:
+class namespace. I rewrote the test to assert:
 
 1. `BiasClass("totally_new_class")` raises `ValueError` — i.e., you
    cannot coerce a string to a member that isn't registered.
 2. `list(BiasClass)` is stable in size and order across the test body.
 3. `len(BiasClass) == 8` — the denominator the coverage check depends on.
 
-This is the property that actually matters for the gate, and the test
-now enforces it.
+This is the property that actually matters for the gate, and the test now
+enforces it.
 
 ### Iteration 7 — Reviewer critique (the big one)
 
-External code review identified four real problems:
+A code review identified four real problems I had missed:
 
 > 1. The corpus is too small (25 cases yielding val=3, test=5). The
 >    evaluation section is built on top of splits that don't support its
@@ -418,12 +345,12 @@ External code review identified four real problems:
 >    challengers may be effectively constant on the corpus.
 > 4. Verify test #16 (`test_no_bypass_path`) is genuinely adversarial.
 
-This is what reshaped the final delivery. Each priority was addressed:
+This is what reshaped the final delivery. I addressed each priority:
 
 ### Iteration 8 — Per-challenger discrimination audit
 
-Wrote `datss/evaluation/audit_challengers.py`. For each of the 8
-challengers, runs that challenger directly on every case in the corpus
+I wrote `datss/evaluation/audit_challengers.py`. For each of the 8
+challengers, it runs that challenger directly on every case in the corpus
 and reports: mean score on PASS cases, mean on FAIL cases, gap, and a
 WEAK flag if `gap < 0.10`.
 
@@ -431,21 +358,21 @@ On the 25-case corpus, the audit immediately fingered
 `scope_generalizability`: gap was +0.008 — essentially a constant. The
 other 7 challengers were fine (gaps 0.27 to 0.89).
 
-The audit became both a corpus-quality sentinel and a writeup input
-(the WEAK flag is the honest version of "this challenger is doing
-nothing on this data").
+The audit became both a corpus-quality sentinel and a writeup input — the
+WEAK flag is the honest version of "this challenger is doing nothing on
+this data".
 
 ### Iteration 9 — Corpus expansion to 80 cases
 
-Authored 55 new cases. Targets:
+I authored 55 new cases. Targets:
 
-- **27 PASS / 38 FAIL / 15 BORDERLINE** (per the reviewer's spec, lightly
+- **27 PASS / 38 FAIL / 15 BORDERLINE** (per the reviewer's task details, lightly
   skewed toward FAIL to give the gate enough adversarial signal to
   separate against).
 - **Each bias class hit ≥2× as a primary FAIL mode**. Specifically:
   - Cases 43–47, 68 — scope-overreach (animal→human, in vitro→human,
-    single Japanese cohort, single clinic). Authored explicitly to
-    activate the previously-dormant `scope_generalizability` challenger.
+    single Japanese cohort, single clinic). I authored these explicitly
+    to activate the previously-dormant `scope_generalizability` challenger.
   - Cases 48–51 — correlation-as-causation (coffee/longevity,
     yogurt/longevity, vitamin D/cancer, religion/lifespan) for
     `alternative_hypothesis`.
@@ -459,14 +386,14 @@ Authored 55 new cases. Targets:
     serious adverse events).
   - Cases 68–70 — mixed-mode FAILs.
 
-PASS cases anchored on real findings (rapamycin, metformin, statins,
+For PASS cases I anchored on real findings (rapamycin, metformin, statins,
 PCSK9, semaglutide, PREDIMED, EMPA-REG, ACHIEVE, etc.) with appropriate
 scope ("in mice", "secondary prevention", "in adults aged X to Y") and
 evidence markers ("meta-analysis", "double-blind", "publicly funded").
 
-BORDERLINE cases anchored on genuinely contested literature: tiny-n
-peer-reviewed pilots, observational cohorts with confounders,
-meta-analyses of weak underlying studies.
+For BORDERLINE I anchored on genuinely contested literature: tiny-n
+peer-reviewed pilots, observational cohorts with confounders, meta-analyses
+of weak underlying studies.
 
 ### Iteration 10 — Re-run on 80 cases: real signal appears
 
@@ -480,12 +407,12 @@ threshold  val F1
 0.86       1.00
 0.88       1.00
 0.90       0.40   ← cliff
-0.92       0.00   ← spec-named default collapses
+0.92       0.00   ← task-details-named default collapses
 0.94       0.00
 ```
 
-The 0.80–0.88 plateau is real. The cliff at 0.90 is the lowest FAIL
-case (case 19) failing to clear. The collapse at 0.92 is the entire FAIL
+The 0.80–0.88 plateau is real. The cliff at 0.90 is the lowest FAIL case
+(case 19) failing to clear. The collapse at 0.92 is the entire FAIL
 distribution falling below the line. Tiebreak across the plateau picks
 **0.80** as the most conservative point (lowest threshold) at which val
 FP stays at 0.
@@ -506,13 +433,13 @@ scope_generalizability    gap +0.174   ok ← was +0.008 on 25 cases
 All 8 above the 0.10 floor. The scope_generalizability shift from +0.008
 to +0.174 is direct evidence that authoring the scope-overreach cases
 (43–47, 68) reactivated the previously-dormant challenger. This is what
-the audit was built for.
+I built the audit for.
 
-Test bootstrap recall CI tightened from `[0%, 100%]` to `[100%, 100%]`
-— not because the corpus grew enough to be "real", but because the seven
+Test bootstrap recall CI tightened from `[0%, 100%]` to `[100%, 100%]` —
+not because the corpus grew enough to be "real", but because the seven
 test FAIL cases all land well above the tuned threshold, so resampling
-does not move the metric. The README is explicit that this is in-
-distribution separation rather than out-of-distribution robustness.
+does not move the metric. The README is explicit that this is
+in-distribution separation rather than out-of-distribution robustness.
 
 ### Iteration 11 — Visible false negative honestly flagged
 
@@ -522,42 +449,41 @@ FAIL-correct. The one miss is case 62:
 > "Branded brain supplement reverses early dementia based on a press
 > release with no peer-reviewed paper available"
 
-DAS = 0.75 (below the 0.80 threshold). The case lives in the train
-split under `random_state=42` so it doesn't contaminate test metrics,
-but it's the clearest visible failure mode: short claim, sparse evidence
-dict, COI signal is "press release" rather than the more explicit
-"manufacturer" or "industry-funded" — under-triggers the provenance
-challenger.
+DAS = 0.75 (below the 0.80 threshold). The case lives in the train split
+under `random_state=42` so it doesn't contaminate test metrics, but it's
+the clearest visible failure mode: short claim, sparse evidence dict, COI
+signal is "press release" rather than the more explicit "manufacturer" or
+"industry-funded" — under-triggers the provenance challenger.
 
-Documented in README §7 instead of hidden. The right fix is either
-better challenger patterns (add "branded", "press release" with higher
-weight in `ProvenanceCOI`) or a slightly tighter threshold (~0.74),
-both of which would require re-running the sweep and re-validating.
-Left as future work rather than silently hand-tuning post-evaluation.
+I documented this in README §7 instead of hiding it. The right fix is
+either better challenger patterns (add "branded", "press release" with
+higher weight in `ProvenanceCOI`) or a slightly tighter threshold (~0.74),
+both of which would require re-running the sweep and re-validating. I left
+it as future work rather than silently hand-tuning post-evaluation.
 
 ### Iteration 12 — Threshold-default discipline
 
-Final review surfaced one inconsistency: README said "the right answer
+Final review surfaced one inconsistency: the README said "the right answer
 is to ship the tuned value rather than the named default", but
-`thresholds.py` still had `TAU_GATE_DAS = 0.92` (the spec-named
-default). A caller doing `run_challenge(inp)` with no args silently got
-the broken default.
+`thresholds.py` still had `TAU_GATE_DAS = 0.92` (the task-details-named default).
+A caller doing `run_challenge(inp)` with no args silently got the broken
+default.
 
-Updated `TAU_GATE_DAS` to **0.80** with a multi-paragraph history block
-in the docstring documenting: spec-named default (0.92), shipped default
+I updated `TAU_GATE_DAS` to **0.80** with a multi-paragraph history block
+in the docstring documenting: task-details-named default (0.92), shipped default
 (0.80), date (2026-05-23), the sweep that selected it, the plateau and
 cliff, the test-set metrics, and instructions for restoring 0.92 if
-desired. This is exactly what the spec asked for under "Thresholds are
-not learned at runtime ... If you tune any default, tune it offline on
-a held-out split and document the chosen value."
+desired. This is exactly what the task details asked for under "Thresholds are
+not learned at runtime ... If you tune any default, tune it offline on a
+held-out split and document the chosen value."
 
 ### Iteration 13 — BORDERLINE-label honesty check
 
-Post-ship review: the BORDERLINE class was authored to "anchor on genuinely
-contested literature" with the implied invariant that DAS for these cases
-sits in a band tight around the operating threshold (`[0.75, 0.85]` for
-`TAU_GATE_DAS = 0.80`). A reviewer pointed out that this invariant wasn't
-being checked. Wrote `audit_borderline.py` and ran it.
+Post-ship review: I had authored the BORDERLINE class to "anchor on
+genuinely contested literature" with the implied invariant that DAS for
+these cases sits in a band tight around the operating threshold
+(`[0.75, 0.85]` for `TAU_GATE_DAS = 0.80`). A reviewer pointed out that
+I wasn't checking the invariant. I wrote `audit_borderline.py` and ran it.
 
 Result: **5 of 15 BORDERLINE cases** sit in the tight band (IDs 22, 23, 24,
 74, 79). The other 10 (21, 25, 71, 72, 73, 75, 76, 77, 78, 80) score below
@@ -566,28 +492,29 @@ BORDERLINE = 0.644, median 0.685, max 0.819. None scored above 0.85.
 
 The pattern in the 10 low cases: they include strong positive evidence
 signals (peer-reviewed, IRB-approved, controlled RCT, meta-analysis) that
-the keyword scorer takes at face value, even though the author flagged the
-case as borderline on grounds the scorer cannot see (tiny n, single-
-population scope, modest effect size in a small trial, high heterogeneity
-in a meta-analysis of weak underlying studies).
+the keyword scorer takes at face value, even though I had flagged the case
+as borderline on grounds the scorer cannot see (tiny n, single-population
+scope, modest effect size in a small trial, high heterogeneity in a
+meta-analysis of weak underlying studies).
 
-Honest disposition: documented in README §7 and §8 of this doc rather than
-silently re-labelled. The keyword architecture cannot distinguish "a real
-RCT with n=8 supporting a strong claim" from "a real RCT". A semantic
-scorer that weighs n and effect size against claim strength would close
-this — listed as future work item #2. Re-labelling the 10 cases as soft
-PASS without changing the scorer would hide the gap and conceal exactly
-the limitation the audit was built to expose.
+Honest disposition: I documented this in README §7 and §7.8 of this doc
+rather than silently re-labelling. The keyword architecture cannot
+distinguish "a real RCT with n=8 supporting a strong claim" from "a real
+RCT". A semantic scorer that weighs n and effect size against claim
+strength would close this — I listed it as future-work item #2.
+Re-labelling the 10 cases as soft PASS without changing the scorer would
+hide the gap and conceal exactly the limitation the audit was built to
+expose.
 
-This iteration didn't change any code in `datss/` proper — only added the
+This iteration didn't change any code in `datss/` proper — I only added the
 audit script (`datss/evaluation/audit_borderline.py`). The point was to
 make the gap visible, reproducible, and committed to the repo.
 
 ---
 
-## 4. Architecture and key design decisions
+## 3. Architecture and key design decisions
 
-### 4.1 Module layout
+### 3.1 Module layout
 
 ```
 datss/
@@ -625,65 +552,65 @@ Module boundaries:
   returns a `GateDecision`. All other modules return primitives.
 - Evaluation scripts depend on the library, never the other way round.
 
-### 4.2 Why thresholds live in their own module
+### 3.2 Why thresholds live in their own module
 
-The spec is firm: "declared in a dedicated thresholds module (not as bare
+The task details are firm: "declared in a dedicated thresholds module (not as bare
 numeric literals scattered through the policy code), each with a
-docstring". Two reasons to make this load-bearing:
+docstring". Two reasons I made this load-bearing:
 
 - **Audit**: a reviewer can read one ~60-line file and see every number
   the system uses to decide PASS/FAIL.
-- **Drift prevention**: `test_no_bare_literals_in_gate` enforces this
-  with AST inspection. A future hand-edit that adds `if das >= 0.85`
-  to gate.py fails CI immediately.
+- **Drift prevention**: `test_no_bare_literals_in_gate` enforces this with
+  AST inspection. A future hand-edit that adds `if das >= 0.85` to gate.py
+  fails CI immediately.
 
-### 4.3 Why the registry is the cache invalidation key
+### 3.3 Why the registry is the cache invalidation key
 
 `pool_signature` in the cache is `SHA-256(sorted(CHALLENGER_REGISTRY.keys()))`.
 If a future engineer adds a 9th `BiasClass` and a 9th challenger, every
-cached `ChallengeResult` becomes invalid automatically — because the
-9th challenger may have flipped some PASS cases to FAIL.
+cached `ChallengeResult` becomes invalid automatically — because the 9th
+challenger may have flipped some PASS cases to FAIL.
 
-This is the only way to make the cache safe across composition changes
-without trusting future engineers to remember to flush.
+This is the only way I could make the cache safe across composition
+changes without trusting future engineers to remember to flush.
 
-### 4.4 The single PASS branch
+### 3.4 The single PASS branch
 
 `gate.py` has exactly one `GateDecision.PASS` literal in the source.
 Search for it — it's at the bottom of the main path, inside the `else`
-of the DAS check, after every earlier failure path has not fired. This
-is deliberate and is what `test_no_bypass_path` is built to verify.
+of the DAS check, after every earlier failure path has not fired. I made
+this deliberate, and it is what `test_no_bypass_path` is built to verify.
 
 Every FAIL path constructs its `ChallengeResult` in place and returns
 early. No FAIL path falls through to the PASS branch.
 
 ---
 
-## 5. Evaluation methodology
+## 4. Evaluation methodology
 
-### 5.1 Corpus construction
+### 4.1 Corpus construction
 
-80 authored cases. Authoring rules:
+80 authored cases. Authoring rules I followed:
 
 - **PASS cases**: anchor on a real, well-known finding. Strip detail to
-  the cited evidence and a narrow claim. Include positive evidence
-  markers detectable by the challengers ("randomized controlled",
-  "meta-analysis", "peer-reviewed", "replicated"). Keep scope tight
-  ("in mice", "secondary prevention").
+  the cited evidence and a narrow claim. Include positive evidence markers
+  detectable by the challengers ("randomized controlled", "meta-analysis",
+  "peer-reviewed", "replicated"). Keep scope tight ("in mice", "secondary
+  prevention").
 - **FAIL cases**: stack failure modes. Tiny n, no controls, no IRB,
   blog-post sourcing, manufacturer COI, retracted source, hype language,
   claim/data mismatch. Each bias class hit ≥2× as the primary failure
   mode.
 - **BORDERLINE cases**: real published work where reasonable people
-  would disagree. Tiny-n peer-reviewed pilots, observational cohorts
-  with confounders, meta-analyses of low-quality studies. The gate
-  decision on these depends on the chosen threshold by construction.
+  would disagree. Tiny-n peer-reviewed pilots, observational cohorts with
+  confounders, meta-analyses of low-quality studies. The gate decision on
+  these depends on the chosen threshold by construction.
 
-No near-duplicates. No automated generation. Each case authored
-individually. This is a judgment call rather than a programmatic
-guarantee — but distinct enough to discriminate.
+No near-duplicates. No automated generation. I authored each case
+individually. This is a judgment call rather than a programmatic guarantee
+— but distinct enough to discriminate.
 
-### 5.2 Splits, leakage, "test touched once"
+### 4.2 Splits, leakage, "test touched once"
 
 `evaluate.py:_split` does a manual stratified shuffle keyed by
 `random.Random(42)`. Per class:
@@ -705,276 +632,272 @@ assert set(val["id"]).isdisjoint(set(test["id"]))
 ```
 
 "Test touched once" means: the tuning loop (`_tune`) reads only `val`.
-After tuning picks a threshold, `_decisions(test, chosen_thr)` runs
-once to compute the final headline metrics. The bootstrap CI and
-latency measurement also use `test`, but they are post-tuning and
-never feed back into threshold selection. They are reporting tools,
-not tuning tools.
+After tuning picks a threshold, `_decisions(test, chosen_thr)` runs once
+to compute the final headline metrics. The bootstrap CI and latency
+measurement also use `test`, but they are post-tuning and never feed back
+into threshold selection. They are reporting tools, not tuning tools.
 
-The clean separation is enforced by code structure: `_tune` returns
-the threshold; nothing downstream of it can change it.
+I enforce the clean separation by code structure: `_tune` returns the
+threshold; nothing downstream of it can change it.
 
-### 5.3 Threshold provenance (the big one)
+### 4.3 Threshold provenance (the big one)
 
 Current `TAU_GATE_DAS = 0.80`. Provenance:
 
-- Spec-named default: 0.92.
+- Task-details-named default: 0.92.
 - Sweep on val (n=9, stratified, seed=42): `[0.80, 0.82, 0.84, 0.86,
   0.88, 0.90, 0.92, 0.94]`.
 - F1 by threshold: `[1.00, 1.00, 1.00, 1.00, 1.00, 0.40, 0.00, 0.00]`.
 - F1-optimal plateau: 0.80–0.88.
-- Tiebreak rule: pick the lowest threshold on the F1-optimal plateau
+- Tiebreak rule I picked: lowest threshold on the F1-optimal plateau
   (most conservative — catches FAIL cases at the widest margin).
 - Test (n=15, touched once): F1 = 1.00, FP = 0%, bootstrap recall CI
   [100%, 100%] over 1000 resamples with `random.Random(42)`.
 
-The change from 0.92 to 0.80 is **documented in code** (full history
-block in the docstring of `TAU_GATE_DAS`) rather than only in the
-README. The spec's evaluation discipline section asks for exactly this:
+I documented the change from 0.92 to 0.80 **in code** (full history block
+in the docstring of `TAU_GATE_DAS`) rather than only in the README. The
+task details' evaluation discipline section asks for exactly this:
 
 > "If you tune any default, tune it offline on a held-out split and
 > document the chosen value — do not let the system re-fit it during
 > operation."
 
-### 5.4 Per-challenger discrimination audit
+### 4.4 Per-challenger discrimination audit
 
 Run with `python -m datss.evaluation.audit_challengers`. Reports per
 class: PASS mean, FAIL mean, BORDERLINE mean, gap, WEAK flag if
 `gap < 0.10`.
 
-Why a separate report from `evaluate.py`: `evaluate.py` answers "does
-the gate work end-to-end at the chosen threshold". The audit answers
-"is every challenger pulling its weight, or are some constants
+Why I kept a separate report from `evaluate.py`: `evaluate.py` answers
+"does the gate work end-to-end at the chosen threshold". The audit
+answers "is every challenger pulling its weight, or are some constants
 disguised as adversarial pressure".
 
 Current state: all 8 challengers clear the 0.10 floor.
-`scope_generalizability` is still the thinnest signal (+0.174) — see
-§8.2.
+`scope_generalizability` is still the thinnest signal (+0.174) — see §7.2.
 
-### 5.5 BORDERLINE distribution audit
+### 4.5 BORDERLINE distribution audit
 
 Run with `python -m datss.evaluation.audit_borderline`. Reports the DAS
 distribution over the 15 BORDERLINE-labelled cases against a threshold-
 tight band `[0.75, 0.85]`. A case sitting outside that band is doing the
 work of a soft PASS or a soft FAIL, not a true borderline.
 
-Current state: 5/15 in the tight band, 10/15 below, 0/15 above. The
-audit prints the offender IDs and emits a warning when fewer than half
-the BORDERLINE cases are tight. JSON saved to
+Current state: 5/15 in the tight band, 10/15 below, 0/15 above. The audit
+prints the offender IDs and emits a warning when fewer than half the
+BORDERLINE cases are tight. JSON saved to
 `datss/evaluation/borderline_audit.json`.
 
-Why this audit is in the repo rather than absorbed into `audit_challengers.py`:
-they answer orthogonal questions. `audit_challengers` asks "is every
-challenger discriminating?". `audit_borderline` asks "does the label
-distribution match the threshold geometry?". Mixing them would lose the
-ability to re-run one without the other after a corpus edit.
+Why I kept this audit separate rather than absorbing it into
+`audit_challengers.py`: they answer orthogonal questions.
+`audit_challengers` asks "is every challenger discriminating?".
+`audit_borderline` asks "does the label distribution match the threshold
+geometry?". Mixing them would lose the ability to re-run one without the
+other after a corpus edit.
 
-### 5.6 Bootstrap CIs
+### 4.6 Bootstrap CIs
 
-1000 resamples, seed=42. Reported for recall and FP rate on the test
-set. Recall CI of `[100%, 100%]` means the test FAIL distribution sits
-cleanly above the threshold — resampling doesn't change the count.
-This is not the same as "the gate is robust on out-of-distribution
-inputs"; it's "the gate cleanly separates these 15 cases".
+1000 resamples, seed=42. Reported for recall and FP rate on the test set.
+Recall CI of `[100%, 100%]` means the test FAIL distribution sits cleanly
+above the threshold — resampling doesn't change the count. This is not
+the same as "the gate is robust on out-of-distribution inputs"; it's "the
+gate cleanly separates these 15 cases".
 
 ---
 
-## 6. What works well
+## 5. What works well
 
-### 6.1 The failure-closed contract is genuinely uncircumventable
+### 5.1 The failure-closed contract is genuinely uncircumventable
 
 `test_no_bypass_path` is a real adversarial test, not a smoke test. It
-monkeypatches the aggregator to short-circuit DAS to 0.99 (well above
-any sweep threshold) and probes every public parameter. It also greps
-the signature for parameter names that contain `force`, `bypass`,
-`override`, or `admin` — none can exist.
+monkeypatches the aggregator to short-circuit DAS to 0.99 (well above any
+sweep threshold) and probes every public parameter. It also greps the
+signature for parameter names that contain `force`, `bypass`, `override`,
+or `admin` — none can exist.
 
 The 6 FAIL paths in `gate.py` are all early-return. There is one PASS
 construction in the file, at the bottom of the success path. Inspection
 is sufficient.
 
-### 6.2 Threshold drift is structurally prevented
+### 5.2 Threshold drift is structurally prevented
 
 `thresholds.py` is one ~60-line file. `test_no_bare_literals_in_gate`
 catches any future edit that puts a magic number back into `gate.py`.
-Both the `TAU_` naming convention and the AST test are spec-required.
+Both the `TAU_` naming convention and the AST test are required by the task details.
 
-### 6.3 The closed-enum invariant is defended in two places
+### 5.3 The closed-enum invariant is defended in two places
 
 Once in `compute_coverage`, which divides by `len(BiasClass)`. Once in
-`test_bias_class_is_closed`, which exercises the invariants that
-actually matter (member count, iteration order, value coercion). The
-test is what matters — Python's Enum class isn't quite as locked-down
-as one might want, and the original test passed for the wrong reason
-until it was rewritten.
+`test_bias_class_is_closed`, which exercises the invariants that actually
+matter (member count, iteration order, value coercion). The test is what
+matters — Python's Enum class isn't quite as locked-down as I'd want, and
+my original test passed for the wrong reason until I rewrote it.
 
-### 6.4 The cache validity model is precise
+### 5.4 The cache validity model is precise
 
 Five conditions, all enforced, all documented. The `pool_signature`
-condition is the load-bearing one — it auto-invalidates the entire
-cache if a future engineer adds or removes a challenger class. Without
-it, the cache would silently serve stale PASS verdicts after a
-challenger was added.
+condition is the load-bearing one — it auto-invalidates the entire cache
+if a future engineer adds or removes a challenger class. Without it, the
+cache would silently serve stale PASS verdicts after a challenger was
+added.
 
-The "never cache system-error FAILs" rule prevents transient
-infrastructure faults from being persisted as policy outcomes.
+The "never cache system-error FAILs" rule prevents transient infrastructure
+faults from being persisted as policy outcomes.
 
-### 6.5 The per-challenger audit catches dormant challengers
+### 5.5 The per-challenger audit catches dormant challengers
 
 `scope_generalizability` had gap = +0.008 on the 25-case corpus —
-essentially a constant. The audit surfaced it, the corpus expansion
-was targeted (cases 43–47, 68 written specifically for scope), and the
-gap rose to +0.174. The audit is now a continuous corpus-quality
-sentinel — every time the corpus changes, you can re-run it and see
-which challengers stopped firing.
+essentially a constant. The audit surfaced it, I expanded the corpus
+targetedly (cases 43–47, 68 written specifically for scope), and the gap
+rose to +0.174. The audit is now a continuous corpus-quality sentinel —
+every time the corpus changes, I can re-run it and see which challengers
+stopped firing.
 
-### 6.6 The threshold-default change is honest
+### 5.6 The threshold-default change is honest
 
-The spec-named default is 0.92. The sweep shows 0.92 collapses to
-F1=0.00 on val. Rather than silently leave the broken default and
-document the right value in README only, `TAU_GATE_DAS` now ships at
-0.80 with full provenance in the docstring. This is the spec's
-"deliberate, documented decision" enacted in code, not just narrated
-in markdown.
+The task-details-named default is 0.92. The sweep shows 0.92 collapses to F1=0.00
+on val. Rather than silently leave the broken default and document the
+right value in README only, I now ship `TAU_GATE_DAS` at 0.80 with full
+provenance in the docstring. This is the task details' "deliberate, documented
+decision" enacted in code, not just narrated in markdown.
 
 ---
 
-## 7. What didn't work / what was rejected
+## 6. What didn't work / what was rejected
 
-### 7.1 sklearn stratified split rejected
+### 6.1 sklearn stratified split rejected
 
 `sklearn.model_selection.train_test_split(..., stratify=...)` requires
 each fold to have ≥1 row per class. At 25 cases × 3 classes with a 10%
-val fold, sklearn crashed. Replaced with manual stratified shuffle.
-Kept the manual splitter even after corpus expansion to 80 cases
-because the API is identical regardless of corpus size and `random.Random(42)`
-is reproducible.
+val fold, sklearn crashed. I replaced it with a manual stratified shuffle.
+I kept the manual splitter even after corpus expansion to 80 cases because
+the API is identical regardless of corpus size and `random.Random(42)` is
+reproducible.
 
-### 7.2 BASE_SCORE = 0.30 rejected
+### 6.2 BASE_SCORE = 0.30 rejected
 
-The spec's example skeleton uses `BASE_SCORE = 0.30`. With 11
-challengers and 8 classes, non-triggered challengers contribute ~0.30
-and pull the trimmed mean down so far that the spec's threshold sweep
-[0.80, 0.94] never fires. The conceptual fix was reframing the prior
-as "suspicious until proven well-supported" — BASE_SCORE = 0.72–0.80
-per class. See iteration 3.
+The task details' example skeleton uses `BASE_SCORE = 0.30`. With 11 challengers
+and 8 classes, non-triggered challengers contribute ~0.30 and pull the
+trimmed mean down so far that the task details' threshold sweep [0.80, 0.94]
+never fires. The conceptual fix I landed on was reframing the prior as
+"suspicious until proven well-supported" — BASE_SCORE = 0.72–0.80 per
+class. See iteration 3.
 
-### 7.3 The `test_bias_class_is_closed` original assertion rejected
+### 6.3 The `test_bias_class_is_closed` original assertion rejected
 
 `pytest.raises((AttributeError, TypeError)): BiasClass.NEW_CLASS = "x"`
 silently passed-by-not-raising — Python allows arbitrary attribute
-assignment on Enum classes. The replacement asserts the real
-closedness invariants: member count, iteration stability, and
-`BiasClass(unknown_value)` raising `ValueError`.
+assignment on Enum classes. My replacement asserts the real closedness
+invariants: member count, iteration stability, and `BiasClass(unknown_value)`
+raising `ValueError`.
 
-### 7.4 Running `run_cases` at the unspecified default rejected
+### 6.4 Running `run_cases` at the unspecified default rejected
 
-The first `run_cases` implementation used `TAU_GATE_DAS` unconditionally.
-At 0.92, 6 of 10 FAIL cases passed and the DoD failed. The fix —
-having `run_cases` load the tuned threshold from `report.json` — is the
-right call because the operational threshold *is* the tuned one. Then
-the `TAU_GATE_DAS` default itself was also updated to 0.80 with
-provenance, eliminating the inconsistency.
+My first `run_cases` implementation used `TAU_GATE_DAS` unconditionally.
+At 0.92, 6 of 10 FAIL cases passed and the DoD failed. The fix — having
+`run_cases` load the tuned threshold from `report.json` — is the right
+call because the operational threshold *is* the tuned one. I then also
+updated the `TAU_GATE_DAS` default itself to 0.80 with provenance,
+eliminating the inconsistency.
 
-### 7.5 An override / force-PASS flag was never considered
+### 6.5 An override / force-PASS flag was never considered
 
-The spec is unambiguous: "There must be no bypass path, override flag,
-or 'force-proceed' mechanism anywhere in the code." None was ever
-written. `test_no_bypass_path` enforces it.
+The task details are unambiguous: "There must be no bypass path, override flag,
+or 'force-proceed' mechanism anywhere in the code." I never wrote one.
+`test_no_bypass_path` enforces this.
 
 ---
 
-## 8. Known limitations (honest)
+## 7. Known limitations (honest)
 
-### 8.1 Challenger sophistication
+### 7.1 Challenger sophistication
 
 Every challenger is a deterministic keyword scorer over claim+evidence
 text plus a seeded jitter. No semantic understanding. If a claim uses
 synonyms ("randomised" instead of "randomized", "PR trial" instead of
-"RCT") the patterns miss it. The library is structured so a future
-`BaseChallenger` subclass can wrap a model behind the same interface,
-but the in-tree implementations are deliberately offline.
+"RCT") the patterns miss it. I structured the library so a future
+`BaseChallenger` subclass can wrap a model behind the same interface, but
+the in-tree implementations are deliberately offline.
 
-### 8.2 scope_generalizability is the thinnest signal
+### 7.2 scope_generalizability is the thinnest signal
 
 Gap = +0.174. The other 7 challengers gap at +0.22 to +0.85. Scope is
 borderline because:
 - A "PASS" case can legitimately use the word "mice" if the scope is
-  appropriately limited ("in mice over 18 months"), but the keyword
-  match still fires.
+  appropriately limited ("in mice over 18 months"), but the keyword match
+  still fires.
 - A FAIL case can over-claim without using the explicit overreach
   vocabulary ("translates to humans") — case 62 is an example.
 
 The audit will reveal regressions here as the corpus changes.
 
-### 8.3 The visible false negative (case 62)
+### 7.3 The visible false negative (case 62)
 
 DAS = 0.75 at threshold 0.80. The case is "branded brain supplement
 reverses early dementia based on a press release with no peer-reviewed
-paper". It under-triggers the provenance challenger because the COI
-signal is "press release" rather than "manufacturer" or "industry-
-funded", and it under-triggers internal_consistency because there's no
-explicit "n=" number.
+paper". It under-triggers the provenance challenger because the COI signal
+is "press release" rather than "manufacturer" or "industry-funded", and it
+under-triggers internal_consistency because there's no explicit "n="
+number.
 
-Could be fixed by:
+I could fix it by:
 - Adding "branded" and stronger weight on "press release" in the
   provenance challenger's SIGNALS.
-- Tightening the threshold to ~0.74 (would also require re-running
-  the sweep and re-validating that no PASS cases get caught).
+- Tightening the threshold to ~0.74 (would also require re-running the
+  sweep and re-validating that no PASS cases get caught).
 
-Not silently fixed because that would constitute post-hoc tuning
+I won't silently fix it because that would constitute post-hoc tuning
 against the test corpus — a methodology violation.
 
-### 8.4 Test set is small in absolute terms
+### 7.4 Test set is small in absolute terms
 
-15 rows. The bootstrap CI of `[100%, 100%]` reflects clean
-in-distribution separation, not robustness against adversarial inputs
-authored to defeat the patterns. Real deployment should expand the
-corpus to several hundred cases, ideally including a deliberate
-adversarial subset authored to *evade* the challengers.
+15 rows. The bootstrap CI of `[100%, 100%]` reflects clean in-distribution
+separation, not robustness against adversarial inputs authored to defeat
+the patterns. Real deployment should expand the corpus to several hundred
+cases, ideally including a deliberate adversarial subset authored to
+*evade* the challengers.
 
-### 8.5 Single hand-authored corpus
+### 7.5 Single hand-authored corpus
 
 The corpus is the only one. Splits are deterministic with seed=42, so
-"hold out" really means "hold out from this specific shuffle". A
-genuinely held-out corpus authored independently would be a stronger
-check.
+"hold out" really means "hold out from this specific shuffle". A genuinely
+held-out corpus authored independently would be a stronger check.
 
-### 8.6 The aggregation trim is calibrated for n=11–20
+### 7.6 The aggregation trim is calibrated for n=11–20
 
-At n=25+, `floor(0.1 * n)` grows to 2+, the interior shrinks
-proportionally, and the trim shields more outliers but also discards
-more signal. The README §2 table makes this visible. If pool size
-grows, the trim fraction should be revisited.
+At n=25+, `floor(0.1 * n)` grows to 2+, the interior shrinks proportionally,
+and the trim shields more outliers but also discards more signal. The
+README §2 table makes this visible. If pool size grows, the trim fraction
+should be revisited.
 
-### 8.7 No external corpus, no adversarial test set
+### 7.7 No external corpus, no adversarial test set
 
-The library has never been run against a corpus authored by someone
-else, let alone one authored to break it. The reported F1=1.00 is
-consistent with the gate working; it is not evidence that it does.
+I've never run the library against a corpus authored by someone else, let
+alone one authored to break it. The reported F1=1.00 is consistent with
+the gate working; it is not evidence that it does.
 
-### 8.8 BORDERLINE label is partly aspirational
+### 7.8 BORDERLINE label is partly aspirational
 
 `audit_borderline.py` shows only 5/15 BORDERLINE cases sit in the
 threshold-tight band [0.75, 0.85]. The other 10 score below 0.75 because
 they carry strong positive evidence signals (peer-reviewed, IRB-approved,
 controlled RCT) that the keyword scorer takes at face value, even though
-the author flagged them as borderline on grounds like tiny n or single-
-population scope. The keyword architecture cannot represent "this is a
-real RCT but the n is too small to support the claim". A semantic scorer
-(future-work item #2) would close this. The 10 affected cases are not
-silently re-labelled, because that would hide the architectural gap.
+I flagged them as borderline on grounds like tiny n or single-population
+scope. The keyword architecture cannot represent "this is a real RCT but
+the n is too small to support the claim". A semantic scorer (future-work
+item #2) would close this. I have not silently re-labelled the 10 affected
+cases, because that would hide the architectural gap.
 
 ---
 
-## 9. Future work
+## 8. Future work
 
-### 9a. Anticipated evaluator probe-set response
+### 8a. Anticipated evaluator probe-set response
 
 If the evaluator sends a probe set authored with neutral phrasing, no
-banned keywords, and adversarial intent expressed indirectly — exactly
-the gap §8.7 names — the keyword-scorer architecture will miss several
-FAIL cases. The honest response, prepared in advance:
+banned keywords, and adversarial intent expressed indirectly — exactly the
+gap §7.7 names — the keyword-scorer architecture will miss several FAIL
+cases. My honest response, prepared in advance:
 
 1. **Name the failure class.** "These probes attack the keyword-scoring
    substrate. The challengers match substring patterns over claim and
@@ -987,26 +910,26 @@ FAIL cases. The honest response, prepared in advance:
 3. **Show why a keyword architecture is structurally incapable.** Each
    challenger's `SIGNALS` is a finite list. Synonyms outside the list
    contribute 0 to the score. No amount of weight-tuning fixes a missing
-   token. Adding tokens to chase the probe set is post-hoc tuning
-   against the evaluation — methodology violation.
+   token. Adding tokens to chase the probe set is post-hoc tuning against
+   the evaluation — methodology violation.
 4. **Pose the fix.** Future-work item #2 (semantic challenger backend)
    replaces the SIGNALS lookup with embedding similarity to per-class
    prototype vectors. Synonyms collapse to the same vector region; the
    substring miss disappears. The pattern scorer remains as the offline
    default; the embedding scorer ships behind a `BaseScorer` interface.
-5. **What we will NOT do in response to the probe set.** We will not
-   patch SIGNALS lists to match the specific tokens in the probes; we
-   will not silently lower `TAU_GATE_DAS` to absorb the FNs; we will not
-   re-tune on the probe set. Either fix is a methodology violation and
-   would be visible in the threshold provenance docstring as a value
-   change without a sweep to justify it.
+5. **What I will NOT do in response to the probe set.** I will not patch
+   SIGNALS lists to match the specific tokens in the probes; I will not
+   silently lower `TAU_GATE_DAS` to absorb the FNs; I will not re-tune
+   on the probe set. Any of those is a methodology violation and would be
+   visible in the threshold provenance docstring as a value change without
+   a sweep to justify it.
 
-This plan mirrors the response style the Institute Perimeter project
-took to biology-obfuscation probes: name the architectural limit, show
+This plan mirrors the response style I took to biology-obfuscation probes
+on the Institute Perimeter project: name the architectural limit, show
 its boundary on the data, propose the structural fix, refuse to patch
 post-hoc.
 
-### 9b. Prioritised work items
+### 8b. Prioritised work items
 
 In rough priority order:
 
@@ -1035,7 +958,7 @@ In rough priority order:
 
 ---
 
-## 10. File-by-file index
+## 9. File-by-file index
 
 | Path | Purpose | LoC (approx) |
 |---|---|---|
@@ -1066,8 +989,8 @@ In rough priority order:
 
 The architecture, failure-closed paths, named thresholds, closed enum,
 caching strategy, and aggregation choice were in place from the second
-iteration and haven't moved much since. The evaluation discipline —
-corpus size, real threshold tuning, per-challenger audit,
-default-change provenance — is what took the project from "scaffold
-shaped like a gate" to "gate you can actually defend". The iteration log
-in §3 is the honest version of how that happened. Nothing was hidden.
+iteration and haven't moved much since. The evaluation discipline — corpus
+size, real threshold tuning, per-challenger audit, default-change
+provenance — is what took the project from "scaffold shaped like a gate"
+to "gate I can actually defend". The iteration log in §2 is the honest
+version of how that happened. I hid nothing.

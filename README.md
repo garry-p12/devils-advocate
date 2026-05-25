@@ -89,7 +89,7 @@ literal in `gate.py` matches any of them.
 
 | Name | Default | Purpose |
 |---|---|---|
-| `TAU_GATE_DAS` | **0.80** | DAS ≥ this ⇒ FAIL. Spec-named default was 0.92; shipped default tuned to 0.80 — see history block in `thresholds.py` and §3 tuning result below. |
+| `TAU_GATE_DAS` | **0.80** | DAS ≥ this ⇒ FAIL. Task-details-named default was 0.92; shipped default tuned to 0.80 — see history block in `thresholds.py` and §3 tuning result below. |
 | `TAU_GATE_LATENCY_P99_MS` | 2000.0 | End-to-end p99 budget. |
 | `TAU_POOL_MIN_CHALLENGERS` | 11 | Minimum successful challengers. |
 | `TAU_POOL_COVERAGE_FLOOR` | 0.80 | Minimum BiasClass coverage. |
@@ -117,7 +117,7 @@ Real signal exists now: the F1-optimal plateau spans **0.80–0.88**, then
 recall collapses at 0.90 and pins at 0 by 0.92. Tiebreak across the plateau
 selects **0.80** — the most conservative point at which val FP stays at 0%.
 
-Note: the **spec-named** default of 0.92 scores **F1=0.00 on val** with this
+Note: the **task-details-named** default of 0.92 scores **F1=0.00 on val** with this
 challenger calibration. Per the task brief's evaluation discipline ("If you
 tune any default, tune it offline on a held-out split and document the chosen
 value"), `TAU_GATE_DAS` is shipped at the tuned value **0.80** with full
@@ -307,7 +307,7 @@ re-derived.
   work too — keeping the manual splitter for reproducibility across corpus
   sizes.
 
-- **No external model calls.** Per spec, every challenger runs offline and
+- **No external model calls.** Per the task details, every challenger runs offline and
   deterministically. There is no LLM-backed scorer behind any
   `BaseScorer` interface in this library.
 
@@ -325,10 +325,10 @@ python -m datss.evaluation.run_cases         # gate over every authored case
 python -m datss.evaluation.evaluate          # tuning + held-out eval + report.json
 python -m datss.evaluation.audit_challengers # per-class PASS-vs-FAIL signal audit
 python -m datss.evaluation.audit_borderline  # BORDERLINE-only DAS distribution audit
-pytest datss/tests/ -v                       # 18 spec tests + 1 extra cache-invalidation test
+pytest datss/tests/ -v                       # 18 task-details acceptance tests + 1 extra cache-invalidation test
 ```
 
-Done means: all 19 pytest tests pass (the 18 spec acceptance tests plus the
+Done means: all 19 pytest tests pass (the 18 task-details acceptance tests plus the
 extra `test_cache_invalidates_on_threshold_change` that exercises the
 threshold-change branch of the cache validity model), `evaluate.py` reports
 a chosen threshold with val+test metrics and bootstrap CIs, `audit_challengers`
