@@ -55,8 +55,9 @@ and §2 iteration 15 for the why.
 |---|---|---|
 | `pytest datss/tests/ -v` | 20/20 | 18 task-details acceptance tests + cache-invalidation + YAML-mirror |
 | Round-1 corpus (`test_cases.csv`, 80 cases) | 27/27 PASS, **38/38 FAIL** | Tuned threshold 0.80; held-out test F1=1.00, bootstrap recall CI [100%, 100%] |
-| Round-1 reviewer probe (`heldout_datss_probes.py`) | **10/10** | Was 3/10 before iteration 14's structural scorer |
-| Round-2 adversarial corpus (`adversarial_cases.csv`, 30 cases) | **24/27 = 88.89%** | 10/10 PASS, 14/17 FAIL — 3 misses documented as the structural ceiling, see DESIGN §7.3 |
+| Round-2 reviewer probe (`heldout_datss_probes.py`, 10 cases) | **10/10** | Was 3/10 before the structural scorer (iteration 14) |
+| Adversary-first corpus (`adversarial_cases.csv`, 30 cases) | **25/27 = 92.59%** | 10/10 PASS, 15/17 FAIL |
+| Independent stress test (`extra_probes.py`, 26 cases) | **18/25 = 72%** | 7/7 PASS, 11/18 FAIL across nine evidentiary failure categories (correlation→causation, surrogate endpoints, population mismatch, endpoint switching, COI, etc.). Per-category breakdown printed by the script and documented in DESIGN §7.9 |
 
 p99 latency: 3.81 ms (≈ 525× under the 2000 ms budget). Numbers regenerated
 by `evaluate.py`; canonical source is `datss/evaluation/report.json`.
@@ -150,12 +151,13 @@ System-error FAILs are never cached. Full validity model in **DESIGN §1.7**.
 ## Running everything
 
 ```bash
-python -m datss.evaluation.run_cases         # gate over round-1 corpus at tuned threshold
-python -m datss.evaluation.run_adversarial   # gate over round-2 adversary-first corpus
+python -m datss.evaluation.run_cases         # gate over round-1 80-case corpus at tuned threshold
+python -m datss.evaluation.run_adversarial   # gate over adversary-first 30-case corpus
 python -m datss.evaluation.evaluate          # tuning + held-out eval + report.json
 python -m datss.evaluation.audit_challengers # per-class PASS-vs-FAIL signal audit
 python -m datss.evaluation.audit_borderline  # BORDERLINE-only DAS distribution audit
-python heldout_datss_probes.py               # round-1 reviewer's 10-case probe set
+python heldout_datss_probes.py               # round-2 reviewer's 10-case probe set
+python extra_probes.py                       # independent 26-case robustness stress test
 pytest datss/tests/ -v                       # full acceptance + hygiene tests
 ```
 
