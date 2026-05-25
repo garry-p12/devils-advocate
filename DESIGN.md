@@ -944,6 +944,71 @@ added a single domain-vocabulary token. The remaining 3 adversarial
 misses are documented as the next architectural ceiling, not patched by
 adding their phrasings.
 
+**Receipts for the two cases the round-2 reviewer asked about by name.**
+The reviewer's question was specifically: how does the gate fail the n=1
+mouse and the stopped-early study without adding their phrases to a
+keyword list? Here are the structural features that fired on each, the
+per-class deltas they produced, and the final DAS:
+
+**Probe: "A single mouse lived 40% longer after we gave it the compound
+once."** with evidence `{"n": 1, "design": "one animal, observed a
+single time", "source": "lab notebook"}`:
+
+| structural feature | value | source |
+|---|---|---|
+| `n` | **1** | from `evidence["n"]` |
+| `is_single_subject` | True | because n≤1 (and "one animal" matched `_SINGLE_SUBJECT_TOKENS`) |
+| `claims_large_effect` | True | "40%" matched `_LARGE_EFFECT_TOKENS` (effect-vs-n token, not domain) |
+| `has_weak_source` | True | "lab notebook" matched `_WEAK_SOURCE_TOKENS` |
+
+| challenger | structural delta | why |
+|---|---|---|
+| evidence_quality | **+1.050** | n≤1 (+0.55) + single-subject (+0.30) + weak-source (+0.20) |
+| internal_consistency | +0.700 | large-effect + n<30 (+0.40) + large-effect + single-subject (+0.30) |
+| methodology | +0.550 | single-subject (+0.25) + tiny-n n<5 (+0.30) |
+| alt_hypothesis | +0.500 | single-subject + large-effect (+0.30) + tiny-n + not randomized (+0.20) |
+| provenance | +0.300 | weak-source (+0.30) |
+| scope | +0.250 | single-subject (+0.25) |
+
+Final **DAS = 0.982, FAIL**. The strings "single mouse" and "40% longer
+after" are NOT in any SIGNALS list. The dominant signals are the sample
+size (`n=1` from the dict) and the source category ("lab notebook" via
+the weak-source token), both of which generalise to any field.
+
+**Probe: "The therapy clearly works - we ended the study early once the
+numbers looked good."** with evidence `{"design": "halted when results
+looked promising", "n": 12}`:
+
+| structural feature | value | source |
+|---|---|---|
+| `n` | 12 | from `evidence["n"]` |
+| `is_stopped_early` | True | "halted when" matched `_STOPPED_EARLY_TOKENS` |
+| `is_subjective_outcome` | True | "clearly works" matched `_SUBJECTIVE_OUTCOME_TOKENS` |
+| `small_n` (n<15) | True | derived from n |
+
+| challenger | structural delta | why |
+|---|---|---|
+| methodology | **+0.700** | stopped-early (+0.35) + subjective (+0.20) + small-n (+0.15) |
+| evidence_quality | +0.200 | n<15 (+0.20) |
+| alt_hypothesis | +0.150 | subjective + not randomized (+0.15) |
+
+Final **DAS = 0.863, FAIL**. The string "ended the study early" or
+"wrap things up" is NOT in any SIGNALS list. The stopped-early detector
+lives in `structural._STOPPED_EARLY_TOKENS` and uses tokens that
+describe the *design pattern* ("halted when", "stopped early", "ended
+once results looked", "optional stopping"). A different probe phrased
+"we terminated the trial because the readout was promising" would also
+fire on "halted when results" via the same token family.
+
+The key argument: I built `structural.py` against the *concept* of
+evidentiary shape (sample size, control, stopping rule, outcome
+subjectivity, source category), and the two reviewer probes were caught
+by the same tokens that would catch the equivalent claims in any
+research field. This is the principled escape from the keyword
+treadmill — though it has its own ceiling at the structural-feature
+level (§7.8), and the truly principled fix is the semantic scorer
+(future-work #1).
+
 ### 5.8 Reviewer feedback is committed back as tests
 
 Both reviewer-caught issues from round 2 — gate direction inversion and
