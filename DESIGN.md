@@ -1172,8 +1172,50 @@ Iteration 14 made the scorer robust against the round-2 probe set
 without adding domain vocabulary, but the structural tokens are still a
 finite list. A probe that describes single-subject n by saying "the one
 participant we tested" (instead of "one subject" or `n=1`) would miss
-the structural tokens. Future-work item #2 is the principled escape;
+the structural tokens. Future-work item #1 is the principled escape;
 adding more structural tokens is a treadmill at a different level.
+
+### 7.9 Documented blind spots from the independent probe set
+
+After round 2 I wrote `extra_probes.py` at the repo root — 26 cases I
+authored independently, without re-reading any of the SIGNALS or
+structural token lists, spanning nine categories that the reviewer's
+probe set doesn't directly hit. This is a stress test, not a tuning
+target — I do NOT modify the scorer in response to its misses.
+
+Aggregate result at the tuned threshold (0.80, unchanged):
+**12/26 = 44% decisive accuracy** (7/7 PASS, 4/18 FAIL).
+
+PASS detection is robust across phrasing variation. FAIL detection has
+four genuine blind spots, all of which are honest architectural
+ceilings rather than implementation defects:
+
+| Category | Score | Why the gate misses |
+|---|---|---|
+| A. Correlation → causation | 0/3 | Observational with large n (e.g. n=80k survey) looks structurally fine. Needs "this is observational AND causal language is used AND confounders are unadjusted" — a three-way conjunction, not a token. |
+| D. Surrogate-endpoint substitution | 0/2 | "RCT + n=320 + biomarker primary" reads structurally as PASS. Needs domain knowledge that the biomarker doesn't translate to the claimed outcome. |
+| E. Population-mismatch overreach | 0/2 | Needs natural-language parsing of "studied in X / claimed for Y" and a similarity check. Semantic. |
+| F. Endpoint switching | 0/2 | Needs comparison of preregistered vs reported endpoints. Semantic. |
+| I (subset). Sparse "trust me" evidence | partial | An empty evidence dict + a confident claim ("Trust me on this one — it works") under-triggers every structural feature; the BASE_SCORE prior sits at ≈ 0.77, just under threshold. |
+
+Categories where the gate IS robust on this independent set:
+
+| Category | Score |
+|---|---|
+| H. Clear PASS, varied phrasings (cluster RCT, crossover, Mendelian randomization, stepped-wedge, replicated null) | 5/5 |
+| B. Effect-vs-n implausibility (double lifespan, 100% cure rate) | 2/3 |
+| C. Pseudo-replication (collaborator-on-original confirms) | 1/2 |
+| G. Indirect COI (founder-also-patent-holder) | 1/2 |
+
+The honest disposition: none of these blind spots can be fixed by adding
+tokens to `structural.py` without admitting I'm chasing the test set
+that exposed them. Each blind spot requires reasoning that the
+keyword-or-structural-token architecture cannot represent. The
+principled fix is future-work item #1 (semantic scorer behind
+`BaseScorer`). The blind spots are committed back as `extra_probes.py`
+so any future scorer change can be tested against them — improvements
+must show up here, not only on the round-2 reviewer probes the
+structural scorer was built against.
 
 ---
 

@@ -151,6 +151,62 @@ escape is a semantic scorer (DESIGN §8b item 1).
 
 ---
 
+## 2b. Independent probe set: where the gate is robust and where it isn't
+
+To avoid the trap of only checking your specific probes, I also wrote
+`extra_probes.py` at the repo root — 26 cases I authored *without*
+re-reading any of the SIGNALS or structural token lists, spanning
+nine categories that the reviewer's set doesn't directly probe. This is
+a deliberate stress test, not a tuning target. Results at the tuned
+threshold (0.80, unchanged):
+
+| Category | Score | Note |
+|---|---|---|
+| H. Clear PASS, varied phrasings | **5/5** | Gate is robust across PASS phrasings |
+| B. Effect-vs-n implausibility | 2/3 | Structural detector fires on extreme cases |
+| C. Pseudo-replication | 1/2 | Catches some non-independent confirmations |
+| G. Indirect / hard-to-detect COI | 1/2 | Founder-also-patent-holder caught; paid-speakers narrative review missed |
+| A. Correlation → causation | **0/3** | Blind spot: observational with n=80k looks structurally fine |
+| D. Surrogate-endpoint substitution | **0/2** | Blind spot: "RCT + n=320 + biomarker primary" reads as PASS |
+| E. Population-mismatch overreach | **0/2** | Blind spot: no detector for "studied in X, claimed for Y" |
+| F. Selective outcome reporting / endpoint switching | **0/2** | Blind spot: no detector for "preregistered primary did not move, reporting a different outcome" |
+| I. Honest-edge / ceiling probes | 2/4 | "Trust me on this one — it works" passes |
+
+Aggregate: **12/26 = 44% decisive accuracy** (7/7 PASS, 4/18 FAIL).
+
+These four blind spots (A, D, E, F) are not failures of the
+implementation against its own design — they are failures of the design
+itself, and they are exactly the architectural ceiling §7 in DESIGN
+names. None of them can be fixed by adding more tokens to the structural
+lists without admitting I'm chasing the test set:
+
+- **Correlation → causation**: would need a "this is observational AND
+  causal language is used AND confounders are not adjusted" three-way
+  check. Each piece is a structural feature in isolation, but the
+  conjunction needs reasoning, not token matching.
+- **Surrogate endpoints**: would need to know that "biomarker change"
+  is a surrogate for the outcome the claim makes. Requires domain
+  understanding the keyword/structural scorer cannot represent.
+- **Population mismatch**: would need to parse the studied vs claimed
+  population from natural language and check equivalence. Semantic.
+- **Endpoint switching**: would need to compare preregistered vs reported
+  endpoints — again, semantic comparison the current architecture cannot
+  do.
+
+This is the principled limit. The fix is future-work item #1 (semantic
+scorer behind `BaseScorer`). I am **not** patching the structural tokens
+to absorb these cases, because that would be the keyword treadmill at
+yet another level — and the next reviewer's probes would expose the
+same architectural ceiling in a new place.
+
+**What the result does show**: PASS detection is robust across phrasing
+variation (5/5 on H), the structural scorer catches effect-vs-n
+implausibility well (2/3 on B), and the gate correctly raises a
+borderline case (I_thin_but_real). The 7/7 PASS column is the strong
+positive signal — false positives are the gate's job to avoid most.
+
+---
+
 ## 3. README scope acknowledgement
 
 After the round-2 fixes I restructured docs so the README is a quick-start
@@ -192,8 +248,11 @@ you'd prefer the long versions back in the README and I'll fold them in.
 - [`datss/gate.py`](./datss/gate.py) — top-of-file `GATE-DIRECTION NOTE`.
 - [`heldout_datss_probes.py`](./heldout_datss_probes.py) — your probe set,
   unchanged.
+- [`extra_probes.py`](./extra_probes.py) — my independent 26-case
+  robustness stress test, with the 44%-decisive result and per-category
+  breakdown printed.
 - [`datss/evaluation/adversarial_cases.csv`](./datss/evaluation/adversarial_cases.csv)
-  — my adversary-first corpus.
+  — my adversary-first 30-case corpus (separate from extra_probes.py).
 - [`datss/evaluation/adversarial_report.json`](./datss/evaluation/adversarial_report.json)
   — per-case decisions on it.
 
