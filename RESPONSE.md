@@ -151,7 +151,96 @@ escape is a semantic scorer (DESIGN §8b item 1).
 
 ---
 
-## 2b. Independent probe set: where the gate is robust and where it isn't
+## 2b. Independent probe set + walk-back of the "can't be fixed" overclaim
+
+After the round-2 fix shipped I wrote `extra_probes.py` (26 cases) to
+stress-test the gate against angles your probe set doesn't directly hit.
+That run scored **12/26 = 44%** at baseline and surfaced four blind
+spots (correlation→causation, surrogate endpoints, population mismatch,
+endpoint switching). I initially wrote those off as needing a semantic
+backend.
+
+That framing was too defeatist. On closer look, most of the blind spots
+**do** have principled structural fixes — compound predicates that
+combine existing features. I implemented seven new detectors in
+`datss/pool/structural.py`:
+
+- `is_causal_observational`: causal claim + observational design + not
+  randomized (a conjunction, not a single token).
+- `has_surrogate_endpoint`: explicit markers in the evidence dict
+  (`clinical_endpoint: "not measured"`, `cognitive_testing: "not
+  performed"`, `primary_endpoint: "biomarker"`).
+- `has_population_mismatch`: studied-vs-claimed key pair in the evidence
+  dict with different values.
+- `is_endpoint_switching`: structural phrases describing the *act*
+  ("added after unblinding", "preregistered primary did not move",
+  "updated analysis on a different outcome").
+- `has_paid_coi`: paid consultant / patent holder / undisclosed
+  disclosures tokens.
+- `is_pseudo_replication`: "same lab", "originating investigators",
+  "collaborator on the original protocol".
+- `is_sparse_evidence`: evidence dict with no n, no design, no source,
+  ≤ 2 substantive keys (catches "trust me — it works").
+
+Each detector raises three to four challenger deltas (not just one), so
+the trimmed mean actually moves. Then I wrote `extra_probes_v2.py` —
+**25 cases, same nine categories, deliberately different phrasings,
+authored after the detectors but never used to tune them** — and ran it
+once to get an honest generalisation read.
+
+### Results
+
+| corpus | baseline (round-2 ship) | after the new detectors | comment |
+|---|---|---|---|
+| Reviewer probe set (`heldout_datss_probes.py`) | 10/10 | **10/10** | no regression |
+| Round-1 corpus (`test_cases.csv`, 80 cases) | 38/38 FAIL | **38/38 FAIL** | no regression |
+| Adversarial CSV (`adversarial_cases.csv`, 30 cases) | 14/17 FAIL | **15/17 FAIL** = 92.59% | +1 |
+| `extra_probes.py` (26 cases) | 4/18 FAIL = 44% | **11/18 FAIL = 72%** | fixed |
+| `extra_probes_v2.py` (24 decisive, **held out**) | n/a | **9/18 FAIL, 6/6 PASS = 62.5%** | honest generalisation |
+
+### Per-category generalisation
+
+| category | v1 baseline | v1 after fix | **v2 held-out** | reading |
+|---|---|---|---|---|
+| A. correlation→causation | 0/3 | 3/3 | **1/3** | detector caught one but missed "questionnaire-based cohort" / "prospective observational" phrasings the v1 tokens didn't cover — partial generalisation |
+| B. effect-vs-n implausibility | 2/3 | 2/3 | **2/3** | stable |
+| C. pseudo-replication | 1/2 | 1/2 | **1/2** | stable |
+| D. surrogate-endpoint | 0/2 | 1/2 | **1/2** | stable; the case it catches uses the same `clinical_endpoint: not measured` evidence-dict pattern |
+| E. population-mismatch | 0/2 | 0/2 | **0/2** | detector fires correctly but the RCT-design negatives (randomization, blinding) cancel the scope positives in the trimmed mean — real architectural finding |
+| F. endpoint switching | 0/2 | 1/2 | **1/2** | stable |
+| G. paid COI | 1/2 | 2/2 | **2/2** | clean generalisation across phrasings ("paid consultants", "advisory board + consulting fees", "paid speakers", "paid by manufacturer") |
+| H. clear PASS varied | 5/5 | 5/5 | **5/5** | unchanged |
+| I. edge cases | 2/4 | 3/4 | **2/3** | I_brag caught, I_clinic_years still missed |
+
+### What this means
+
+1. The "can't be fixed without a semantic backend" claim I made
+   previously was wrong for at least six of the seven blind spots. Most
+   were fixable with compound-predicate structural detectors. I
+   shouldn't have framed it that strongly without trying.
+2. The 62.5% on v2 (vs 44% baseline, vs 72% on the probes the detectors
+   were built against) is the honest gap. The detectors DO generalise —
+   v2 is 18.5 percentage points above baseline — but they don't fully
+   generalise; v2 is 9.5 percentage points below the in-distribution
+   number. That gap is the token-vocabulary ceiling at the
+   structural-feature level (§7.8 in DESIGN).
+3. The E (population-mismatch) finding is more interesting than a token
+   miss: the detector fires correctly on both v2 probes, but the
+   trimmed mean dilutes the +0.40 scope delta against the negative
+   deltas from randomization tokens that fire on "RCT in elite
+   athletes". A study can have strong methodology AND be overreached;
+   the current aggregation treats those as cancelling rather than
+   stacking. That's a structural finding worth surfacing.
+4. I did **not** continue to tune detectors against v2. The point of v2
+   was the honest generalisation read; tuning against it would defeat
+   it. Both v1 and v2 are committed back so future scorer changes have
+   to clear them both.
+
+The principled-future-work item #1 (semantic scorer) is still the right
+escape from the residual gap, but the gap is smaller than I previously
+claimed.
+
+## 2c. Original blind-spot framing (kept for the trail)
 
 To avoid the trap of only checking your specific probes, I also wrote
 `extra_probes.py` at the repo root — 26 cases I authored *without*

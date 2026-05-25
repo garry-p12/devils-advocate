@@ -126,6 +126,148 @@ _IN_VITRO_SCOPE_TOKENS = (
 )
 
 
+# --- Round-2 follow-up: detectors for blind spots surfaced by ---------
+# extra_probes.py. Each detector targets a class of evidentiary weakness
+# (correlation→causation, surrogate endpoint, population mismatch,
+# endpoint switching, paid-speakers COI, sparse evidence). Tokens here
+# describe the *act* or *shape* of the weakness, not domain content; they
+# are designed to generalise to claims authored in different vocabulary.
+
+_OBSERVATIONAL_DESIGN_TOKENS = (
+    "observational", "cross-sectional", "cross sectional",
+    "self-report consumption survey", "self-report survey",
+    "consumption survey", "questionnaire-based",
+    "prospective observational", "observational cohort",
+    "cohort study", "registry-based", "retrospective cohort",
+)
+
+_CAUSAL_CLAIM_TOKENS = (
+    "causes", "extends lifespan", "prevents", "prevent", "reverses aging",
+    "we recommend", "leads to", "is responsible for",
+    "shows X prevents", "shows that X causes",
+    "shows that X prevents", "drives", "produces",
+    "extends human lifespan", "extends life", "shortens",
+    "is the cause of", "is to blame for",
+)
+
+_SURROGATE_OUTCOME_KEYS = (
+    "clinical_endpoint", "primary_endpoint", "primary endpoint",
+    "cognitive_testing", "cognitive testing",
+    "hard_endpoint", "clinical outcome",
+    "mortality_outcome", "outcome_measured",
+)
+
+_SURROGATE_OUTCOME_VALUES = (
+    "not measured", "not performed", "not assessed", "not tested",
+    "biomarker change", "biomarker", "surrogate",
+    "intermediate measure", "proxy",
+)
+
+_POPULATION_MISMATCH_KEYS = (
+    ("studied_population", "claimed_population"),
+    ("studied_in", "claimed_for"),
+    ("trial_population", "target_population"),
+    ("enrolled", "claimed_for"),
+)
+
+_ENDPOINT_SWITCHING_TOKENS = (
+    "added after unblinding", "after seeing the data",
+    "after the unblinding", "preregistered primary did not",
+    "preregistered primary endpoint did not",
+    "primary endpoint did not move", "primary endpoint was negative",
+    "updated analysis on a different outcome",
+    "different endpoint than preregistered",
+    "endpoint added after",
+    "subgroup of patients with the highest",
+    "post-hoc subgroup",
+    "subgroup analysis after",
+    "the subgroup of",
+)
+
+_PAID_COI_TOKENS = (
+    "paid consultants", "paid consultancies",
+    "consulting fees undisclosed", "paid speakers",
+    "speaker fees", "paid by the manufacturer",
+    "honoraria undisclosed", "honoraria from the manufacturer",
+    "undisclosed disclosures", "disclosures: undisclosed",
+    "paid consultants to the drug", "paid consultants to the",
+    "consultancies undisclosed",
+    "also founded the company", "also founder", "patent holder",
+    "patent royalties", "stock in the company",
+)
+
+_PSEUDO_REPLICATION_TOKENS = (
+    "same lab", "same team", "originating lab",
+    "originating investigators", "collaborator on the original",
+    "consulted on the original protocol",
+    "co-author on the original",
+    "in our lab", "by our team",
+)
+
+
+def _evidence_has_observational_design(evidence: Dict[str, Any]) -> bool:
+    """Check evidence dict design field or values for observational markers."""
+    if not isinstance(evidence, dict):
+        return False
+    for key in ("design", "study_design", "method"):
+        v = evidence.get(key)
+        if isinstance(v, str) and any(t in v.lower() for t in _OBSERVATIONAL_DESIGN_TOKENS):
+            return True
+    return False
+
+
+def _evidence_has_surrogate_marker(evidence: Dict[str, Any]) -> bool:
+    """
+    Detect explicit surrogate-endpoint markers in the evidence dict.
+    Two paths:
+      1. A surrogate-outcome key (e.g. clinical_endpoint) has a value that
+         contains 'not measured' / 'not performed' / 'biomarker' / 'surrogate'.
+      2. The primary_endpoint value explicitly names a biomarker term.
+    """
+    if not isinstance(evidence, dict):
+        return False
+    for key in _SURROGATE_OUTCOME_KEYS:
+        v = evidence.get(key)
+        if isinstance(v, str) and any(t in v.lower() for t in _SURROGATE_OUTCOME_VALUES):
+            return True
+        if isinstance(v, bool) and v is False:
+            # e.g. cognitive_testing: False
+            return True
+    return False
+
+
+def _evidence_has_population_mismatch(evidence: Dict[str, Any]) -> bool:
+    """
+    Detect explicit studied-vs-claimed population mismatch.
+    Only fires when BOTH halves of a key pair are present AND differ.
+    """
+    if not isinstance(evidence, dict):
+        return False
+    for studied_key, claimed_key in _POPULATION_MISMATCH_KEYS:
+        s = evidence.get(studied_key)
+        c = evidence.get(claimed_key)
+        if isinstance(s, str) and isinstance(c, str):
+            s_norm = s.strip().lower()
+            c_norm = c.strip().lower()
+            if s_norm and c_norm and s_norm != c_norm:
+                return True
+    return False
+
+
+def _evidence_is_sparse(evidence: Dict[str, Any], n: Optional[int]) -> bool:
+    """
+    Detect evidence dicts that carry essentially no evidentiary structure:
+    no n, no design field, no source field, and fewer than 3 keys.
+    Catches 'trust me' / 'investigator certainty' submissions.
+    """
+    if not isinstance(evidence, dict):
+        return True
+    substantive_keys = [k for k, v in evidence.items() if v not in (None, "", [], {})]
+    has_design = any(k in evidence for k in ("design", "study_design", "method"))
+    has_source = any(k in evidence for k in ("source", "journal", "publication"))
+    return (n is None) and (not has_design) and (not has_source) and len(substantive_keys) <= 2
+
+
 def _has_any(text: str, tokens) -> bool:
     return any(t in text for t in tokens)
 
@@ -246,6 +388,15 @@ class StructuralFeatures:
     claims_no_statistics: bool
     is_in_vitro_scope: bool
 
+    # Round-2 follow-up: blind-spot detectors.
+    is_causal_observational: bool      # causal claim + observational + not randomized
+    has_surrogate_endpoint: bool       # evidence acknowledges clinical outcome not measured
+    has_population_mismatch: bool      # studied_population != claimed_population in evidence
+    is_endpoint_switching: bool        # post-hoc endpoint change patterns
+    has_paid_coi: bool                 # paid-speakers / patent-holder / undisclosed disclosures
+    is_pseudo_replication: bool        # "same lab", "collaborator on the original"
+    is_sparse_evidence: bool           # no n, no design, no source, <=2 substantive keys
+
     # Derived structural risk scores in [-1, +1] (positive = adversarial).
     evidence_quality_delta: float
     methodology_delta: float
@@ -270,6 +421,11 @@ def compute_features(claim: str, evidence: Dict[str, Any]) -> StructuralFeatures
 
     is_post_hoc = _has_any(text, _POST_HOC_TOKENS)
     is_clinical_impression = _has_any(text, _CLINICAL_IMPRESSION_TOKENS)
+    is_endpoint_switching = _has_any(text, _ENDPOINT_SWITCHING_TOKENS)
+    has_paid_coi = _has_any(text, _PAID_COI_TOKENS)
+    is_pseudo_replication = _has_any(text, _PSEUDO_REPLICATION_TOKENS)
+    has_surrogate_endpoint = _evidence_has_surrogate_marker(evidence)
+    has_population_mismatch = _evidence_has_population_mismatch(evidence)
 
     # Boolean shape predicates.
     single_subject = (
@@ -296,6 +452,26 @@ def compute_features(claim: str, evidence: Dict[str, Any]) -> StructuralFeatures
                 for x in ("none", "not computed", "none computed"))
     )
     in_vitro = _has_any(text, _IN_VITRO_SCOPE_TOKENS)
+
+    # Correlation→causation compound predicate: a causal claim made on
+    # observational evidence with no randomization. Each piece is a
+    # structural feature individually; the conjunction is what makes the
+    # claim adversarially weak (the "X is associated with Y, therefore X
+    # causes Y" fallacy).
+    has_causal_language = _has_any(text, _CAUSAL_CLAIM_TOKENS)
+    has_observational_design = (
+        _evidence_has_observational_design(evidence)
+        or _has_any(text, _OBSERVATIONAL_DESIGN_TOKENS)
+    )
+    is_causal_observational = (
+        has_causal_language and has_observational_design and not randomized
+    )
+
+    # Sparse-evidence detector: "trust me" / "investigator certainty"
+    # submissions where the evidence dict carries no n, no design, no
+    # source, and almost no other content. Without this the BASE_SCORE
+    # prior alone sits just below threshold.
+    is_sparse_evidence = _evidence_is_sparse(evidence, n)
 
     # --- Per-class structural risk deltas --------------------------------
     # Each delta is bounded; the per-challenger combiner clips again.
@@ -331,6 +507,20 @@ def compute_features(claim: str, evidence: Dict[str, Any]) -> StructuralFeatures
         eq -= 0.10
     elif rep_lang:
         eq -= 0.10
+    if is_sparse_evidence:
+        eq += 0.25  # round-2 follow-up: "trust me" has no evidence to evaluate
+    if is_causal_observational:
+        eq += 0.15  # observational + causal claim weakens the evidentiary basis
+    if has_surrogate_endpoint:
+        eq += 0.20  # claim about clinical outcome from a non-clinical measure
+    if has_population_mismatch:
+        eq += 0.10  # studied-vs-claimed mismatch weakens generalisability of evidence
+    if is_endpoint_switching:
+        eq += 0.20  # changed endpoint after seeing data weakens the evidence
+    if has_paid_coi:
+        eq += 0.15  # undisclosed paid relationships weaken the evidentiary chain
+    if is_pseudo_replication:
+        eq += 0.15  # non-independent confirmation isn't real replication
 
     # Methodology: control, randomization, stopping rule, design integrity.
     # tiny_n is the methodology angle on small samples: any study with n<5 has
@@ -359,6 +549,18 @@ def compute_features(claim: str, evidence: Dict[str, Any]) -> StructuralFeatures
         mt += 0.30
     if is_clinical_impression:
         mt += 0.25
+    if is_endpoint_switching:
+        mt += 0.35
+    if has_surrogate_endpoint:
+        mt += 0.30
+    if is_pseudo_replication:
+        mt += 0.20
+    if is_sparse_evidence:
+        mt += 0.20
+    if is_causal_observational:
+        mt += 0.30  # the methodology angle on causal-from-observational
+    if has_paid_coi:
+        mt += 0.15  # paid relationships open the door to methodological choices that favour the sponsor
 
     # Internal consistency: large effect at small n, no stats supporting claim.
     ic = 0.0
@@ -372,8 +574,15 @@ def compute_features(claim: str, evidence: Dict[str, Any]) -> StructuralFeatures
         ic += 0.10
     if rep_count >= 2:
         ic -= 0.15
+    if has_surrogate_endpoint:
+        ic += 0.25  # claim about clinical outcome from a non-clinical measure
+    if is_endpoint_switching:
+        ic += 0.25  # claim contradicts the preregistered primary outcome
+    if has_population_mismatch:
+        ic += 0.15  # claim outruns the studied population
 
-    # Scope / generalizability: in vitro, single subject, single center.
+    # Scope / generalizability: in vitro, single subject, single center,
+    # population-mismatch overreach.
     sc = 0.0
     if in_vitro:
         sc += 0.30
@@ -383,8 +592,10 @@ def compute_features(claim: str, evidence: Dict[str, Any]) -> StructuralFeatures
         sc -= 0.20
     if rep_lang and "multi-center" in text:
         sc -= 0.15
+    if has_population_mismatch:
+        sc += 0.40  # studied in X, claimed for different Y
 
-    # Provenance: source category, replication, journal.
+    # Provenance: source category, replication, journal, paid COI.
     pv = 0.0
     if weak_source:
         pv += 0.30
@@ -394,6 +605,10 @@ def compute_features(claim: str, evidence: Dict[str, Any]) -> StructuralFeatures
         pv -= 0.15
     if is_clinical_impression:
         pv += 0.20
+    if has_paid_coi:
+        pv += 0.30
+    if is_pseudo_replication:
+        pv += 0.15  # non-independent confirmation is a provenance issue too
 
     # Alternative hypothesis: causal claims with no control, tiny sample, or
     # subjective outcome — the smaller the n and the more uncontrolled the
@@ -411,6 +626,10 @@ def compute_features(claim: str, evidence: Dict[str, Any]) -> StructuralFeatures
         ah += 0.15
     if randomized and rep_count >= 1:
         ah -= 0.30
+    if is_causal_observational:
+        ah += 0.40  # causal claim from observational data without randomization
+    if has_population_mismatch:
+        ah += 0.15  # studied-vs-claimed mismatch opens alternative explanations
 
     # Prior art: no structural feature is decisive here; keep small.
     pa = 0.0
@@ -441,6 +660,13 @@ def compute_features(claim: str, evidence: Dict[str, Any]) -> StructuralFeatures
         claims_large_effect=large_effect,
         claims_no_statistics=no_stats,
         is_in_vitro_scope=in_vitro,
+        is_causal_observational=is_causal_observational,
+        has_surrogate_endpoint=has_surrogate_endpoint,
+        has_population_mismatch=has_population_mismatch,
+        is_endpoint_switching=is_endpoint_switching,
+        has_paid_coi=has_paid_coi,
+        is_pseudo_replication=is_pseudo_replication,
+        is_sparse_evidence=is_sparse_evidence,
         evidence_quality_delta=eq,
         methodology_delta=mt,
         internal_consistency_delta=ic,

@@ -99,6 +99,20 @@ def _summarise_structural_triggers(f: StructuralFeatures) -> List[str]:
         bits.append("no-statistics")
     if f.is_in_vitro_scope:
         bits.append("in-vitro-scope")
+    if f.is_causal_observational:
+        bits.append("causal-observational")
+    if f.has_surrogate_endpoint:
+        bits.append("surrogate-endpoint")
+    if f.has_population_mismatch:
+        bits.append("population-mismatch")
+    if f.is_endpoint_switching:
+        bits.append("endpoint-switching")
+    if f.has_paid_coi:
+        bits.append("paid-coi")
+    if f.is_pseudo_replication:
+        bits.append("pseudo-replication")
+    if f.is_sparse_evidence:
+        bits.append("sparse-evidence")
     return bits
 
 

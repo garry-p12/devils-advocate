@@ -5,8 +5,8 @@
     "n_fail": 17,
     "n_borderline": 3,
     "pass_correct": 10,
-    "fail_correct": 14,
-    "accuracy_decisive": 0.8888888888888888
+    "fail_correct": 15,
+    "accuracy_decisive": 0.9259259259259259
   },
   "rows": [
     {
@@ -47,9 +47,9 @@
     {
       "id": "A6",
       "label": "FAIL",
-      "decision": "PASS",
-      "das": 0.786,
-      "flag": "MISS"
+      "decision": "FAIL",
+      "das": 0.857,
+      "flag": "OK"
     },
     {
       "id": "A7",
@@ -104,7 +104,7 @@
       "id": "A14",
       "label": "FAIL",
       "decision": "PASS",
-      "das": 0.737,
+      "das": 0.774,
       "flag": "MISS"
     },
     {

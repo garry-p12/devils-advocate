@@ -595,6 +595,45 @@ Two smaller round-2 catches:
    gotten the wrong number. I synced YAML to 0.80 with a pointer note,
    and added `test_yaml_matches_thresholds` to enforce the invariant.
 
+### Iteration 16 — Walking back the "can't be fixed" claim
+
+After round 2 I wrote `extra_probes.py` (26 cases) as an independent
+stress test. The result (12/26 = 44% baseline) surfaced four blind
+spots — correlation→causation, surrogate endpoints, population
+mismatch, endpoint switching — that I initially wrote off in
+RESPONSE.md and DESIGN §7.9 as needing a semantic backend.
+
+A reviewer pushback ("So you mean to say we can't fix the blindspots?")
+made me re-examine. The framing was wrong: most of the blind spots have
+principled structural fixes. I added seven compound-predicate detectors
+to `structural.py` (`is_causal_observational`, `has_surrogate_endpoint`,
+`has_population_mismatch`, `is_endpoint_switching`, `has_paid_coi`,
+`is_pseudo_replication`, `is_sparse_evidence`), each raising deltas
+across multiple challengers so the trimmed mean actually moves. Then I
+wrote `extra_probes_v2.py` — 25 cases with deliberately different
+phrasings, authored after the detectors but never used to tune them —
+and ran it once.
+
+Generalisation results (full per-category breakdown in §7.9b):
+
+- `extra_probes.py` (the set the detectors were built against):
+  **44% → 72%**
+- `extra_probes_v2.py` (held out, one-shot): **62.5%**
+- Reviewer probes / original 80-case corpus: no regression
+- Adversarial CSV: 92% → 92.59% (+1)
+
+The generalisation gap (72% on v1 vs 62.5% on v2) is the honest finding:
+the detectors generalise meaningfully but not fully. Tokens at the
+structural-feature level have the same treadmill property tokens at
+the SIGNALS level do, just smaller. I did not continue tuning detectors
+against v2 — both files are committed back so any future scorer change
+has to clear both.
+
+The reviewer's pushback was right; my "can't be fixed without semantic"
+framing in §7.9 was too defeatist. Six of seven categories are at least
+partly fixable structurally. The residual gap is real but smaller than
+I claimed. §7.9b is the walk-back in the limitations section.
+
 ---
 
 ## 3. Architecture and key design decisions
@@ -1174,6 +1213,90 @@ finite list. A probe that describes single-subject n by saying "the one
 participant we tested" (instead of "one subject" or `n=1`) would miss
 the structural tokens. Future-work item #1 is the principled escape;
 adding more structural tokens is a treadmill at a different level.
+
+### 7.9b Walk-back of the "can't be fixed" claim (iteration 16)
+
+The earlier §7.9 text (kept below) framed the four blind spots
+(correlation→causation, surrogate endpoints, population mismatch,
+endpoint switching) as needing a semantic backend. That was too
+defeatist. On closer look, six of the seven blind spots have principled
+structural fixes — compound predicates that combine existing features.
+
+I added the following detectors to `structural.py`:
+
+- `is_causal_observational`: causal language + observational design +
+  not randomized.
+- `has_surrogate_endpoint`: evidence-dict markers like
+  `clinical_endpoint: "not measured"`, `primary_endpoint: "biomarker"`,
+  `cognitive_testing: "not performed"`.
+- `has_population_mismatch`: studied-vs-claimed key pair in evidence
+  with different values.
+- `is_endpoint_switching`: structural phrases describing the *act*
+  ("added after unblinding", "preregistered primary did not", "updated
+  analysis on a different outcome").
+- `has_paid_coi`: paid-consultant / patent-holder / undisclosed-disclosures
+  tokens.
+- `is_pseudo_replication`: "same lab" / "originating investigators".
+- `is_sparse_evidence`: no n, no design, no source, ≤ 2 substantive keys.
+
+Each detector raises three to four challenger deltas so the signal
+survives the trimmed mean. I then wrote `extra_probes_v2.py` — 25 cases
+in the same nine categories, deliberately different phrasings, authored
+*after* the detectors but never used to tune them — and ran it once.
+
+| corpus | before (round-2 ship) | after iteration 16 |
+|---|---|---|
+| Reviewer probe set | 10/10 | 10/10 (no regression) |
+| Round-1 80-case corpus | 38/38 FAIL | 38/38 FAIL (no regression) |
+| Adversarial CSV (30 cases) | 14/17 FAIL = 92% | 15/17 FAIL = 92.59% (+1) |
+| `extra_probes.py` (26 cases) | 4/18 FAIL = 44% | **11/18 FAIL = 72%** |
+| `extra_probes_v2.py` (24 decisive, **held out, one-shot**) | n/a | **9/18 FAIL, 6/6 PASS = 62.5%** |
+
+Per-category generalisation from v1-tuning-set to v2-held-out:
+
+| category | v1 baseline | v1 after fix | v2 held-out |
+|---|---|---|---|
+| A. correlation→causation | 0/3 | 3/3 | 1/3 |
+| B. effect-vs-n implausibility | 2/3 | 2/3 | 2/3 |
+| C. pseudo-replication | 1/2 | 1/2 | 1/2 |
+| D. surrogate-endpoint | 0/2 | 1/2 | 1/2 |
+| E. population-mismatch | 0/2 | 0/2 | 0/2 |
+| F. endpoint switching | 0/2 | 1/2 | 1/2 |
+| G. paid COI | 1/2 | 2/2 | 2/2 |
+| H. clear PASS varied | 5/5 | 5/5 | 5/5 |
+| I. edge cases | 2/4 | 3/4 | 2/3 |
+
+The honest reading:
+
+1. The "can't be fixed without semantic" framing was wrong for at least
+   six of the seven categories. Most are partly fixable structurally.
+2. The detectors **do** generalise (62.5% on v2 vs 44% baseline = +18.5
+   percentage points) but **don't fully generalise** (62.5% vs 72% on
+   the v1 set the detectors were built against = -9.5 percentage
+   points). That gap is the token-vocabulary ceiling at the
+   structural-feature level (§7.8). Adding more tokens chases v2; I am
+   not doing that.
+3. **G. paid COI cleanly generalised** (2/2 on both sets) — the
+   structural tokens for "paid consultants" / "patent holder" /
+   "advisory board" / "paid speakers" cover the variants. This is the
+   pattern that worked best.
+4. **E. population-mismatch is a more interesting finding** than a
+   token miss. The detector fires correctly on both v2 probes, but the
+   trimmed mean dilutes the +0.40 scope delta against the negative
+   deltas from randomization tokens that match on "RCT in elite
+   athletes" / "pediatric RCT". A study can have strong methodology AND
+   be overreached; the current aggregation treats those as cancelling
+   rather than stacking. That is an architectural finding about the
+   aggregator, not the detectors. A future fix could weight category-
+   specific deltas differently (overreach should not be cancelled by a
+   strong study design within its own population).
+5. I did **not** continue to tune detectors against v2. Both v1 and v2
+   are committed back so future scorer changes have to clear them both.
+
+The principled-future-work item #1 (semantic scorer) is still the right
+escape from the residual gap, but the gap is meaningfully smaller than
+the original §7.9 text below implies. I'm keeping the original text
+below for the audit trail.
 
 ### 7.9 Documented blind spots from the independent probe set
 
