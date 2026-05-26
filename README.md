@@ -187,7 +187,6 @@ drift between `defaults.yaml` and `thresholds.py`.
 
 | topic | file |
 |---|---|
-| Full engineering write-up (build, eval methodology, audits, limits) | [`DESIGN.md`](./DESIGN.md) |
 | Gate orchestration + FAIL paths + direction note | `datss/gate.py` |
 | Structural evidence scoring (iteration 14) | `datss/pool/structural.py` |
 | Tuned threshold provenance | docstring of `TAU_GATE_DAS` in `datss/thresholds.py` |
