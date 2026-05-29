@@ -51,11 +51,11 @@ instructions in the `datss/gate.py` module docstring.
 | `pytest datss/tests/ -v` | 20/20 | 18 task-details acceptance tests + cache-invalidation + YAML-mirror |
 | Round-1 corpus (`test_cases.csv`, 80 cases) | 27/27 PASS, **38/38 FAIL** | Tuned threshold 0.80; held-out test F1=1.00, bootstrap recall CI [100%, 100%] |
 | Round-2 reviewer probe (`heldout_datss_probes.py`, 10 cases) | **10/10** | Was 3/10 before the structural scorer (iteration 14) |
-| Round-3 reviewer probe (`heldout_datss_probes_v2.py`, 8 cases) | **8/8** | Was **3/8** before Path A. The 3 caught cases had `n` in the evidence dict; the 5 misses had the weakness only in free text. Path A's structure extractors close the gap. |
-| Path-A generalisation check (`path_a_generalization_check.py`) | **10/10 novel paraphrases caught; 3/3 ceiling cases still missed** | Confirms Path A generalised (paraphrases not in the v2 probe set) rather than memorising the eight strings — and names the residual it does not solve. |
+| Round-3 reviewer probe (`heldout_datss_probes_v2.py`, 8 cases) | **8/8** | Was **3/8** before the current methodology. The 3 caught cases had `n` in the evidence dict; the 5 misses had the weakness only in free text. The current methodology's structure extractors close the gap. |
+| Current methodology generalisation check (`path_a_generalization_check.py`) | **10/10 novel paraphrases caught; 3/3 ceiling cases still missed** | Confirms the current methodology generalised (paraphrases not in the v2 probe set) rather than memorising the eight strings — and names the residual it does not solve. |
 | Self-attack battery (`self_attack.py`, 9 methods) | diagnostic | Vocab-substitution 5/5 miss + cross-domain 2/4 = the documented vocabulary ceiling; null-dict 5/5, PASS-stripping 5/5, paraphrase 9/10, compound monotonic, threshold clean. Surfaced two precision fixes (forum; schedule-vs-outcome stop). |
 | Adversary-first corpus (`adversarial_cases.csv`, 30 cases) | **25/27 = 92.59%** | 10/10 PASS, 15/17 FAIL |
-| Independent stress test (`extra_probes.py`, 36 cases) | **29/35 = 82.86%** | 12/12 PASS, 17/23 FAIL. Categories A–I cover nine evidentiary failure modes; **cat J** (5/5) is fresh Path-A weak paraphrases; **cat K** (5/5) is false-positive guards — strong claims phrased to *look* weak. Cat K surfaced and fixed one overfit (bare "forum" matched expert/consensus forums; now requires an online-forum qualifier). |
+| Independent stress test (`extra_probes.py`, 36 cases) | **29/35 = 82.86%** | 12/12 PASS, 17/23 FAIL. Categories A–I cover nine evidentiary failure modes; **cat J** (5/5) is fresh current-methodology weak paraphrases; **cat K** (5/5) is false-positive guards — strong claims phrased to *look* weak. Cat K surfaced and fixed one overfit (bare "forum" matched expert/consensus forums; now requires an online-forum qualifier). |
 
 p99 latency: 3.81 ms (≈ 525× under the 2000 ms budget). Numbers regenerated
 by `evaluate.py`; canonical source is `datss/evaluation/report.json`.
@@ -198,9 +198,9 @@ python -m datss.evaluation.audit_challengers # per-class PASS-vs-FAIL signal aud
 python -m datss.evaluation.audit_borderline  # BORDERLINE-only DAS distribution audit
 python heldout_datss_probes.py               # round-2 reviewer's 10-case probe set
 python heldout_datss_probes_v2.py            # round-3 reviewer's 8-case probe set (now 8/8)
-python path_a_generalization_check.py        # Path-A: generalisation + honest-ceiling check
+python path_a_generalization_check.py        # current methodology: generalisation + honest-ceiling check
 python self_attack.py                        # nine-method self-attack battery
-python extra_probes.py                       # independent 36-case stress test (incl. Path-A cat J/K)
+python extra_probes.py                       # independent 36-case stress test (incl. current methodology cat J/K)
 pytest datss/tests/ -v                       # full acceptance + hygiene tests
 ```
 
