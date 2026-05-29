@@ -359,12 +359,119 @@ _CLINICAL_IMPRESSION_TOKENS = (
 )
 
 
+# --- Round-3 follow-up: generalising structure extractors -------------
+# The round-2 reviewer's v2 probes showed a clean split: where a weakness is
+# encoded in a structured evidence-dict field (n, design, source) the gate
+# catches it robustly; where the SAME weakness lives only in the free-text
+# phrasing, the substring token lists miss it on the next paraphrase. These
+# extractors pull the *structure* out of free text using regexes that match a
+# CLASS of phrasings rather than a fixed string: a single-subject quantifier
+# in front of any organism/person noun, a named single person, an informal
+# provenance, an explicit absence of a comparison, and an outcome-dependent
+# stopping rule. They generalise to paraphrases that are NOT in the probe set
+# (validated against independently-authored paraphrases). They do NOT solve
+# semantic paraphrase in general — a claim whose weakness is only inferrable
+# (population mismatch stated in prose, surrogate endpoint described without a
+# dict field) still slips through. That residual is the embedding-scorer job
+# (future-work item #1), documented as the honest ceiling in README/RESPONSE.
+
+_SUBJECT_NOUN = (
+    r"(?:test\s+)?(?:animals?|rodents?|mouse|mice|rats?|hamsters?|gerbils?|"
+    r"guinea\s+pigs?|dogs?|cats?|primates?|monkeys?|ferrets?|rabbits?|"
+    r"pigs?|piglets?|specimens?|organisms?|subjects?|participants?|patients?|"
+    r"volunteers?|persons?|individuals?|recruits?|cases?|donors?)"
+)
+
+# A single-subject quantifier directly in front of an organism/person noun
+# => n == 1, regardless of which specific noun is used. Catches "lone test
+# animal", "the solitary subject", "a single hamster", "one volunteer".
+_SINGLE_SUBJECT_RE = re.compile(
+    r"\b(?:lone|sole|single|solitary|one|just\s+one|only\s+one)\s+" + _SUBJECT_NOUN + r"\b"
+)
+
+# A named single person in a testimonial ("a colleague", "my friend") => n==1.
+# Restricted to inherently-singular social nouns to avoid matching plural /
+# population uses of "patients"/"participants".
+_SINGLE_PERSON_RE = re.compile(
+    r"\b(?:a|an|one|our|my|the)\s+"
+    r"(?:colleague|friend|relative|coworker|co-worker|neighbou?r|"
+    r"acquaintance|buddy|family\s+member)\b"
+)
+
+# Informal / non-vetted provenance: social media, forums, word of mouth,
+# personal assertion verbs. Describes the SHAPE of a weak source, not a
+# specific outlet. Catches "a thread on a longevity forum", "word of mouth",
+# "a colleague swears".
+_INFORMAL_SOURCE_RE = re.compile(
+    # 'forum' qualified as an online/discussion forum — NOT a bare 'forum',
+    # which also names expert/consensus forums (false positive, see
+    # extra_probes K_expert_forum).
+    r"\bonline\s+forum\b|\binternet\s+forum\b|\bweb\s+forum\b"
+    r"|\bforum\s+(?:thread|post|user|member|comment)\b"
+    r"|\bmessage\s+board\b|\bsubreddit\b|\breddit\b|\bdiscord\b"
+    r"|\bfacebook\b|\btwitter\b|\binstagram\b|\btiktok\b|\bsocial\s+media\b"
+    r"|\bcomment\s+thread\b|\bthread\s+on\b|\bchat\s+group\b"
+    r"|\bword\s+of\s+mouth\b|\bhearsay\b|\bby\s+reputation\b|\brumou?rs?\b"
+    r"|\b(?:swears?|swore|insists?|insisted|raves?|raved)\b"
+    r"|\btestimonials?\b|\banecdotes?\b"
+)
+
+# Explicit absence of a comparison/control arm, phrased without the literal
+# "no control" token. Catches "nothing to compare against", "no group to
+# compare it with", "without any comparison".
+_NO_COMPARISON_RE = re.compile(
+    r"\bnothing\s+to\s+(?:compare|contrast)\b"
+    r"|\bno\s+(?:one|group|arm|cohort|baseline|comparator|comparison|reference)\b"
+    r"[^.]{0,40}?\bto\s+(?:compare|contrast)\b"
+    r"|\bno\s+(?:comparison|comparator|baseline)\b"
+    r"|\bwithout\s+(?:any\s+|a\s+|a\s+proper\s+)?(?:comparison|comparator|baseline)\b"
+)
+
+# Schedule-driven stopping is NOT optional stopping: a group-sequential design
+# with a prespecified interim boundary, or a trial that ran its planned
+# duration, is legitimate even if the final result was favourable. These
+# tokens suppress the optional-stopping signal (precision guard surfaced by
+# self_attack.py / extra_probes K_prespecified_stop). The distinction between
+# "stopped because the data turned good" and "stopped on a prespecified
+# schedule" is otherwise semantic — this is a conservative lexical guard, not
+# a general solution.
+_SCHEDULED_STOP_TOKENS = (
+    "prespecified", "pre-specified", "preplanned", "pre-planned",
+    "planned duration", "prespecified duration", "preregistered duration",
+    "protocol-specified", "protocol specified", "planned interim",
+    "prespecified interim", "group-sequential", "group sequential",
+    "alpha-spending", "alpha spending",
+)
+
+# Outcome-dependent (optional) stopping: a termination verb whose trigger is
+# the data turning favourable. Catches "we wrapped up the moment the trend
+# turned favorable", "halted once the numbers looked good", "stopped as soon
+# as the effect looked promising".
+_OUTCOME_STOP_RE = re.compile(
+    r"\b(?:stopp?ed|ended|halted|wrapped\s+up|wound\s+(?:up|down)|concluded|"
+    r"finished|closed|ceased|terminated|cut\s+(?:it\s+)?short|"
+    r"called\s+it(?:\s+(?:off|quits))?)\b"
+    r"[^.]{0,45}?"
+    r"\b(?:when|once|the\s+moment|as\s+soon\s+as|after|because)\b"
+    r"[^.]{0,45}?"
+    r"\b(?:trend|results?|numbers?|data|effect|signal|outcomes?|things?|it)\b"
+    r"[^.]{0,30}?"
+    r"\b(?:favou?rabl[ey]|promising|positive|good|encouraging|strong|"
+    r"turned|looked\s+good|in\s+our\s+favou?r|we\s+wanted|we\s+hoped|"
+    r"we\s+were\s+hoping)\b"
+)
+
+
 def _natural_n(text: str) -> Optional[int]:
     """Lowest-numbered match wins so 'two dogs in our group' returns 2 not 6."""
     found: list[int] = []
     for cue, n in _NATURAL_N_CUES:
         if cue in text:
             found.append(n)
+    # Generalising regexes: a single-subject quantifier on any organism/person
+    # noun, or a named single person, both imply n == 1.
+    if _SINGLE_SUBJECT_RE.search(text) or _SINGLE_PERSON_RE.search(text):
+        found.append(1)
     return min(found) if found else None
 
 
@@ -432,10 +539,12 @@ def compute_features(claim: str, evidence: Dict[str, Any]) -> StructuralFeatures
         _has_any(text, _SINGLE_SUBJECT_TOKENS)
         or (n is not None and n <= 1)
     )
-    no_control = _has_any(text, _NO_CONTROL_TOKENS)
-    stopped_early = _has_any(text, _STOPPED_EARLY_TOKENS)
+    no_control = _has_any(text, _NO_CONTROL_TOKENS) or bool(_NO_COMPARISON_RE.search(text))
+    stopped_early = (
+        _has_any(text, _STOPPED_EARLY_TOKENS) or bool(_OUTCOME_STOP_RE.search(text))
+    ) and not _has_any(text, _SCHEDULED_STOP_TOKENS)
     subjective = _has_any(text, _SUBJECTIVE_OUTCOME_TOKENS)
-    weak_source = _has_any(text, _WEAK_SOURCE_TOKENS)
+    weak_source = _has_any(text, _WEAK_SOURCE_TOKENS) or bool(_INFORMAL_SOURCE_RE.search(text))
     strong_source = _has_any(text, _STRONG_SOURCE_TOKENS)
     rep_lang = _has_any(text, _REPLICATION_TOKENS)
     rep_count = 0
@@ -495,6 +604,10 @@ def compute_features(claim: str, evidence: Dict[str, Any]) -> StructuralFeatures
         eq += 0.10  # missing n is itself adversarial
     if single_subject:
         eq += 0.30
+    if no_control:
+        eq += 0.15  # an uncontrolled design is itself weak evidence, not only a methodology flaw
+    if stopped_early:
+        eq += 0.12  # outcome-dependent stopping leaves a biased, weaker evidence base
     if no_stats:
         eq += 0.25
     if weak_source:
@@ -572,6 +685,8 @@ def compute_features(claim: str, evidence: Dict[str, Any]) -> StructuralFeatures
         ic += 0.25
     if no_stats:
         ic += 0.10
+    if stopped_early:
+        ic += 0.20  # optional stopping inflates the reported estimate vs. its true value
     if rep_count >= 2:
         ic -= 0.15
     if has_surrogate_endpoint:
@@ -618,6 +733,8 @@ def compute_features(claim: str, evidence: Dict[str, Any]) -> StructuralFeatures
         ah += 0.30
     if no_control and large_effect:
         ah += 0.25
+    if no_control:
+        ah += 0.15  # without a comparison arm, alternative explanations stay open
     if subjective and large_effect:
         ah += 0.20
     if tiny_n and not randomized:

@@ -56,11 +56,60 @@ and §2 iteration 15 for the why.
 | `pytest datss/tests/ -v` | 20/20 | 18 task-details acceptance tests + cache-invalidation + YAML-mirror |
 | Round-1 corpus (`test_cases.csv`, 80 cases) | 27/27 PASS, **38/38 FAIL** | Tuned threshold 0.80; held-out test F1=1.00, bootstrap recall CI [100%, 100%] |
 | Round-2 reviewer probe (`heldout_datss_probes.py`, 10 cases) | **10/10** | Was 3/10 before the structural scorer (iteration 14) |
+| Round-3 reviewer probe (`heldout_datss_probes_v2.py`, 8 cases) | **8/8** | Was **3/8** before Path A. The 3 caught cases had `n` in the evidence dict; the 5 misses had the weakness only in free text. Path A's structure extractors close the gap. |
+| Path-A generalisation check (`path_a_generalization_check.py`) | **10/10 novel paraphrases caught; 3/3 ceiling cases still missed** | Confirms Path A generalised (paraphrases not in the v2 probe set) rather than memorising the eight strings — and names the residual it does not solve. |
+| Self-attack battery (`self_attack.py`, 9 methods) | diagnostic | Vocab-substitution 5/5 miss + cross-domain 2/4 = the documented vocabulary ceiling (§7.8); null-dict 5/5, PASS-stripping 5/5, paraphrase 9/10, compound monotonic, threshold clean. Surfaced two precision fixes (forum; schedule-vs-outcome stop). |
 | Adversary-first corpus (`adversarial_cases.csv`, 30 cases) | **25/27 = 92.59%** | 10/10 PASS, 15/17 FAIL |
-| Independent stress test (`extra_probes.py`, 26 cases) | **18/25 = 72%** | 7/7 PASS, 11/18 FAIL across nine evidentiary failure categories (correlation→causation, surrogate endpoints, population mismatch, endpoint switching, COI, etc.). Per-category breakdown printed by the script and documented in DESIGN §7.9 |
+| Independent stress test (`extra_probes.py`, 36 cases) | **29/35 = 82.86%** | 12/12 PASS, 17/23 FAIL. Categories A–I cover nine evidentiary failure modes; **cat J** (5/5) is fresh Path-A weak paraphrases; **cat K** (5/5) is false-positive guards — strong claims phrased to *look* weak. Cat K surfaced and fixed one overfit (bare "forum" matched expert/consensus forums; now requires an online-forum qualifier). |
 
 p99 latency: 3.81 ms (≈ 525× under the 2000 ms budget). Numbers regenerated
 by `evaluate.py`; canonical source is `datss/evaluation/report.json`.
+
+---
+
+## What the structural scorer actually does (and does not)
+
+The round-3 reviewer made a precise distinction that earlier prose blurred:
+`pool/structural.py` is not one mechanism, it is three, with **different
+generalisation properties**. Stating this exactly is the point — a gate's
+documentation has to match what its code does.
+
+1. **Evidence-dict field parsing — genuine structure parsing.** `n`, design
+   keys, `replicated_by`, surrogate/population key-pairs are read straight
+   from the evidence dict. These fire regardless of how the free text is
+   phrased. The `n=1` mouse fails at DAS 0.92 even when a 12% effect is
+   substituted for the 40% one and no large-effect token fires. This is the
+   layer to trust.
+
+2. **Free-text structure extractors (Path A, round 3) — regexes over a
+   *class* of phrasings.** A single-subject quantifier in front of any
+   organism/person noun ⇒ `n=1`; an informal provenance (forum, social media,
+   "word of mouth", "a colleague swears"); an explicit absence of a comparison
+   ("nothing to compare against"); an outcome-dependent stopping rule
+   ("wrapped up the moment the trend turned favourable"). These extract
+   structure from prose, so they generalise to paraphrases the author never
+   saw — verified at 10/10 on independently-written paraphrases in
+   `path_a_generalization_check.py`, and tested for over-firing by the cat-K
+   false-positive guards in `extra_probes.py` (strong claims phrased to look
+   weak: "not a single one was lost", an expert "forum", a within-subject
+   design with "no separate comparison arm"). Those guards caught one overfit
+   — bare "forum" matched expert/consensus forums — now fixed to require an
+   online-forum qualifier. They are a real step past the round-1/2 substring
+   lists, but they are still bounded by their noun/verb vocabulary.
+
+3. **The ceiling — semantic weakness with no structural handle.** Where the
+   weakness is only inferrable from meaning (a population mismatch stated in
+   prose with no `studied/claimed` keys, a surrogate endpoint described without
+   a dict marker, a single subject named with a noun outside the extractor's
+   list), the gate still misses it. `path_a_generalization_check.py` Part 2
+   demonstrates this on purpose. Closing it requires the embedding-similarity
+   scorer (future-work item #1), not a longer keyword list — a longer list
+   only moves the failure one paraphrase further out.
+
+Earlier drafts claimed the structural tokens "generalise across domains."
+That is true of layer 1 and now substantially of layer 2; it was never true
+of layer 3, and the `extra_probes.py` category scores (population-mismatch,
+surrogate-in-prose) are the operational measure of that ceiling.
 
 ---
 
@@ -157,7 +206,10 @@ python -m datss.evaluation.evaluate          # tuning + held-out eval + report.j
 python -m datss.evaluation.audit_challengers # per-class PASS-vs-FAIL signal audit
 python -m datss.evaluation.audit_borderline  # BORDERLINE-only DAS distribution audit
 python heldout_datss_probes.py               # round-2 reviewer's 10-case probe set
-python extra_probes.py                       # independent 26-case robustness stress test
+python heldout_datss_probes_v2.py            # round-3 reviewer's 8-case probe set (now 8/8)
+python path_a_generalization_check.py        # Path-A: generalisation + honest-ceiling check
+python self_attack.py                        # nine-method self-attack battery (DESIGN §7.10)
+python extra_probes.py                       # independent 36-case stress test (incl. Path-A cat J/K)
 pytest datss/tests/ -v                       # full acceptance + hygiene tests
 ```
 
@@ -188,7 +240,8 @@ drift between `defaults.yaml` and `thresholds.py`.
 | topic | file |
 |---|---|
 | Gate orchestration + FAIL paths + direction note | `datss/gate.py` |
-| Structural evidence scoring (iteration 14) | `datss/pool/structural.py` |
+| Structural evidence scoring + Path-A extractors (it. 14/16/17) | `datss/pool/structural.py` |
+| Self-attack battery + vocabulary ceiling | `self_attack.py`, DESIGN §7.8/§7.10 |
 | Tuned threshold provenance | docstring of `TAU_GATE_DAS` in `datss/thresholds.py` |
 | Evaluation report (canonical numbers) | `datss/evaluation/report.json` |
 | Per-challenger discrimination audit | `datss/evaluation/challenger_audit.json` |

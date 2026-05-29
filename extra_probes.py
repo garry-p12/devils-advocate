@@ -243,6 +243,72 @@ PROBES: List[Tuple[str, str, Dict[str, Any], str]] = [
      "Trust me on this one — it works.",
      {"evidence": "personal certainty"},
      "FAIL"),
+
+    # ---- J. Path-A generalisation: fresh weak paraphrases ----------------
+    # None of these phrasings appear in heldout_datss_probes_v2.py or in
+    # path_a_generalization_check.py. They test whether the round-3 structure
+    # extractors fire on a class of phrasings rather than memorised strings.
+    ("J_sole_ferret",
+     "Our sole ferret bounced back to youthful vigour after a single dose.",
+     {"design": "watched the animal afterward"},
+     "FAIL"),
+
+    ("J_one_recruit",
+     "Just one recruit received the compound, and his markers reversed entirely.",
+     {"design": "watched him afterward"},
+     "FAIL"),
+
+    ("J_message_board",
+     "A regular on an anti-ageing message board reported the protocol delivered "
+     "dramatic gains.",
+     {"source": "message board post"},
+     "FAIL"),
+
+    ("J_halted_positive",
+     "The study was halted once the numbers turned positive.",
+     {"n": 24},
+     "FAIL"),
+
+    ("J_nothing_contrast",
+     "We simply had nothing to contrast the treated group against.",
+     {"n": 33},
+     "FAIL"),
+
+    # ---- K. False-positive guards: strong claims that LOOK like Path-A ---
+    # triggers. Real generalisation means the extractors do NOT fire here.
+    # If any of these flip to FAIL, the regex is overfiring on surface form.
+    ("K_not_single_lost",
+     "Across 4,200 randomized participants in a preregistered double-blind trial, "
+     "not a single one was lost to follow-up, and mortality fell; the result was "
+     "independently replicated.",
+     {"n": 4200, "design": "RCT double-blind preregistered",
+      "replicated_by": ["group A", "group B"]},
+     "PASS"),
+
+    ("K_expert_forum",
+     "A consensus forum of forty independent experts, drawing on a preregistered "
+     "meta-analysis of 30 randomized trials, endorsed the mortality finding.",
+     {"design": "meta-analysis of 30 RCTs", "n": 51000},
+     "PASS"),
+
+    ("K_within_subject_nocompare",
+     "There was no separate comparison arm because the double-blind within-subject "
+     "crossover design makes each patient serve as their own control.",
+     {"n": 120, "design": "double-blind within-subject crossover"},
+     "PASS"),
+
+    ("K_prespecified_stop",
+     "The trial ended after its prespecified two-year duration; the preregistered "
+     "results were favourable.",
+     {"n": 8000, "design": "preregistered RCT"},
+     "PASS"),
+
+    ("K_single_factor",
+     "Across a large multi-site cohort with subsequent RCT confirmation, the single "
+     "strongest predictor of survival was the intervention.",
+     {"n": 9000, "design": "multi-site cohort plus RCT confirmation",
+      "replicated_by": ["confirmatory RCT"]},
+     "PASS"),
 ]
 
 
@@ -316,6 +382,8 @@ def main() -> None:
         "G": "indirect / hard-to-detect COI",
         "H": "clear PASS, varied phrasings",
         "I": "honest-edge / structural-ceiling probes",
+        "J": "Path-A generalisation: fresh weak paraphrases",
+        "K": "Path-A false-positive guards (strong claims that look weak)",
     }
     for cat in sorted(by_category):
         n = by_category[cat]
