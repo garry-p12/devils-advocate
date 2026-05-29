@@ -76,7 +76,7 @@ documentation has to match what its code does.
    substituted for the 40% one and no large-effect token fires. This is the
    layer to trust.
 
-2. **Free-text structure extractors (Path A, round 3) — regexes over a
+2. **Free-text structure extractors (round 3) — regexes over a
    *class* of phrasings.** A single-subject quantifier in front of any
    organism/person noun ⇒ `n=1`; an informal provenance (forum, social media,
    "word of mouth", "a colleague swears"); an explicit absence of a comparison
