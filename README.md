@@ -5,10 +5,6 @@ running them through a pool of independently-seeded challenger agents,
 aggregating their scores into a single Devil's-Advocate Score (DAS), and
 returning a failure-closed gate decision.
 
-For the long-form engineering write-up — spec adherence, build iterations,
-evaluation methodology, what worked, what didn't, honest limitations,
-future work — see **[DESIGN.md](./DESIGN.md)**.
-
 ---
 
 ## Quick start
@@ -38,14 +34,13 @@ print(result.decision, result.das, result.reason)
 
 ## Gate-direction note
 
-The CureForge task brief framed DAS as a score that *clears* a threshold to
+The task brief framed DAS as a score that *clears* a threshold to
 PASS (high DAS = good evidence, default 0.92). This implementation **inverts
 the direction**: high DAS = strong adversarial case = FAIL at the threshold.
 I chose this reading because it matches the natural semantics of a
 "Devil's-Advocate Score" (the adversary's confidence, not the claim's
 quality). It is a deliberate reinterpretation. Full flag and restore
-instructions in the `datss/gate.py` module docstring; see DESIGN.md §1.6
-and §2 iteration 15 for the why.
+instructions in the `datss/gate.py` module docstring.
 
 ---
 
@@ -58,7 +53,7 @@ and §2 iteration 15 for the why.
 | Round-2 reviewer probe (`heldout_datss_probes.py`, 10 cases) | **10/10** | Was 3/10 before the structural scorer (iteration 14) |
 | Round-3 reviewer probe (`heldout_datss_probes_v2.py`, 8 cases) | **8/8** | Was **3/8** before Path A. The 3 caught cases had `n` in the evidence dict; the 5 misses had the weakness only in free text. Path A's structure extractors close the gap. |
 | Path-A generalisation check (`path_a_generalization_check.py`) | **10/10 novel paraphrases caught; 3/3 ceiling cases still missed** | Confirms Path A generalised (paraphrases not in the v2 probe set) rather than memorising the eight strings — and names the residual it does not solve. |
-| Self-attack battery (`self_attack.py`, 9 methods) | diagnostic | Vocab-substitution 5/5 miss + cross-domain 2/4 = the documented vocabulary ceiling (§7.8); null-dict 5/5, PASS-stripping 5/5, paraphrase 9/10, compound monotonic, threshold clean. Surfaced two precision fixes (forum; schedule-vs-outcome stop). |
+| Self-attack battery (`self_attack.py`, 9 methods) | diagnostic | Vocab-substitution 5/5 miss + cross-domain 2/4 = the documented vocabulary ceiling; null-dict 5/5, PASS-stripping 5/5, paraphrase 9/10, compound monotonic, threshold clean. Surfaced two precision fixes (forum; schedule-vs-outcome stop). |
 | Adversary-first corpus (`adversarial_cases.csv`, 30 cases) | **25/27 = 92.59%** | 10/10 PASS, 15/17 FAIL |
 | Independent stress test (`extra_probes.py`, 36 cases) | **29/35 = 82.86%** | 12/12 PASS, 17/23 FAIL. Categories A–I cover nine evidentiary failure modes; **cat J** (5/5) is fresh Path-A weak paraphrases; **cat K** (5/5) is false-positive guards — strong claims phrased to *look* weak. Cat K surfaced and fixed one overfit (bare "forum" matched expert/consensus forums; now requires an online-forum qualifier). |
 
@@ -69,7 +64,7 @@ by `evaluate.py`; canonical source is `datss/evaluation/report.json`.
 
 ## What the structural scorer actually does (and does not)
 
-The round-3 reviewer made a precise distinction that earlier prose blurred:
+The reviewer made a precise distinction that earlier prose blurred:
 `pool/structural.py` is not one mechanism, it is three, with **different
 generalisation properties**. Stating this exactly is the point — a gate's
 documentation has to match what its code does.
@@ -113,13 +108,11 @@ surrogate-in-prose) are the operational measure of that ceiling.
 
 ---
 
-## Task-brief required sections (brief; full discussion in DESIGN.md)
+## Task-brief required sections
 
 The task brief asks the README to cover the bias-class enumeration, the
 aggregation function, the threshold defaults, the failure-closed paths,
-the caching strategy, and the latency numbers. Each section below is a
-one-paragraph/one-table summary with a pointer into DESIGN.md for the
-long version.
+the caching strategy, and the latency numbers. 
 
 ### Bias-class enumeration
 
@@ -141,7 +134,7 @@ fixed in code; runtime extension is rejected by both `compute_coverage`
 To add a class: edit `datss/models.py`, add a concrete challenger in
 `datss/pool/challenger.py`, register it in `CHALLENGER_REGISTRY`, and
 re-run `evaluate.py`. The cache's `pool_signature` auto-invalidates on
-registry change. Full rationale per class in **DESIGN §1.2**.
+registry change.
 
 ### Aggregation function
 
@@ -155,8 +148,7 @@ each tail and average the interior. Single-1.0-outlier influence:
 | 15 | 1 | 13 | 0.077 (survives the trim) |
 | 20 | 2 | 16 | 0.000 (trimmed) |
 
-Alternatives considered (plain mean, min, max, median) and their failure
-modes in **DESIGN §1.3**.
+Alternatives present in the detailed design documentation
 
 ### Threshold defaults
 
@@ -170,7 +162,7 @@ modes in **DESIGN §1.3**.
 
 `TAU_GATE_DAS` was selected from the F1-optimal plateau 0.80–0.88 on the
 val split; F1 collapses at 0.90 and pins at 0.0 by the task's named 0.92.
-Full provenance in the docstring of `TAU_GATE_DAS` and in **DESIGN §4.3**.
+
 
 ### Failure-closed paths
 
@@ -185,7 +177,7 @@ Full provenance in the docstring of `TAU_GATE_DAS` and in **DESIGN §4.3**.
 
 No override flag, no force-PASS keyword, no admin bypass. `test_no_bypass_path`
 monkeypatches the aggregator to 0.99 and probes every public knob; the gate
-still FAILs. Full enumeration and adversarial-test design in **DESIGN §1.6**.
+still FAILs. 
 
 ### Caching strategy
 
@@ -193,7 +185,6 @@ still FAILs. Full enumeration and adversarial-test design in **DESIGN §1.6**.
 `(claim, evidence, component_id)` JSON. A cached entry is returnable only
 if all of: identical claim/evidence/component_id, identical
 `das_threshold` at write time, identical `pool_signature` (registry hash).
-System-error FAILs are never cached. Full validity model in **DESIGN §1.7**.
 
 ---
 
@@ -208,7 +199,7 @@ python -m datss.evaluation.audit_borderline  # BORDERLINE-only DAS distribution 
 python heldout_datss_probes.py               # round-2 reviewer's 10-case probe set
 python heldout_datss_probes_v2.py            # round-3 reviewer's 8-case probe set (now 8/8)
 python path_a_generalization_check.py        # Path-A: generalisation + honest-ceiling check
-python self_attack.py                        # nine-method self-attack battery (DESIGN §7.10)
+python self_attack.py                        # nine-method self-attack battery
 python extra_probes.py                       # independent 36-case stress test (incl. Path-A cat J/K)
 pytest datss/tests/ -v                       # full acceptance + hygiene tests
 ```
@@ -240,8 +231,8 @@ drift between `defaults.yaml` and `thresholds.py`.
 | topic | file |
 |---|---|
 | Gate orchestration + FAIL paths + direction note | `datss/gate.py` |
-| Structural evidence scoring + Path-A extractors (it. 14/16/17) | `datss/pool/structural.py` |
-| Self-attack battery + vocabulary ceiling | `self_attack.py`, DESIGN §7.8/§7.10 |
+| Structural evidence scoring +  extractors (it. 14/16/17) | `datss/pool/structural.py` |
+| Self-attack battery + vocabulary ceiling | `self_attack.py` |
 | Tuned threshold provenance | docstring of `TAU_GATE_DAS` in `datss/thresholds.py` |
 | Evaluation report (canonical numbers) | `datss/evaluation/report.json` |
 | Per-challenger discrimination audit | `datss/evaluation/challenger_audit.json` |
